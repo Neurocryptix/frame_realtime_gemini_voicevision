@@ -19,7 +19,6 @@ class OCRService {
   // Enhanced OCR capabilities
   final bool _useImagePreprocessing;
   final bool _useRegionDetection;
-  static const double _confidenceThreshold = 0.8; // Use element confidence instead
   
   OCRService({
     void Function(String)? logger,
@@ -230,112 +229,7 @@ class OCRService {
     }
   }
 
-  /// Extract text using ML Kit Text Recognition
-  Future<OCRResult?> _extractTextWithMLKit(Uint8List imageData) async {
-    try {
-      // Create InputImage from bytes
-      final inputImage = InputImage.fromBytes(
-        bytes: imageData,
-        metadata: InputImageMetadata(
-          size: const Size(800, 600), // Default size - actual size would be better
-          rotation: InputImageRotation.rotation0deg,
-          format: InputImageFormat.yuv420,
-          bytesPerRow: 800 * 3, // Approximate for JPEG
-        ),
-      );
-      
-      // Process image with text recognizer
-      final recognizedText = await _textRecognizer!.processImage(inputImage);
-      
-      if (recognizedText.text.trim().isEmpty) {
-        return null; // No text found
-      }
-      
-      // Extract text blocks with positions
-      final textBlocks = <TextBlock>[];
-      double totalConfidence = 0.0;
-      int blockCount = 0;
-      
-      for (final textBlock in recognizedText.blocks) {
-        final bounds = textBlock.boundingBox;
-        final confidence = _calculateBlockConfidence(textBlock);
-        
-        textBlocks.add(
-          TextBlock(
-            text: textBlock.text,
-            confidence: confidence,
-            bounds: BoundingBox(
-              left: bounds.left.toDouble(),
-              top: bounds.top.toDouble(),
-              width: bounds.width.toDouble(),
-              height: bounds.height.toDouble(),
-            ),
-            metadata: {
-              'cornerPoints': textBlock.cornerPoints.map((point) => {
-                'x': point.x,
-                'y': point.y,
-              }).toList(),
-              'recognizedLanguages': textBlock.recognizedLanguages,
-            },
-          ),
-        );
-        
-        totalConfidence += confidence;
-        blockCount++;
-      }
-      
-      final averageConfidence = blockCount > 0 ? totalConfidence / blockCount : 0.0;
-      
-      return OCRResult(
-        text: recognizedText.text.trim(),
-        confidence: averageConfidence,
-        processingTime: Duration.zero, // Will be calculated by caller
-        textBlocks: textBlocks,
-        metadata: {
-          'totalBlocks': blockCount,
-          'implementation': 'ml_kit',
-          'imageSize': imageData.length,
-        },
-      );
-    } catch (e) {
-      _logger?.call('❌ ML Kit OCR error: $e');
-      return null;
-    }
-  }
 
-  /// Calculate confidence for a text block based on ML Kit data
-  double _calculateBlockConfidence(mlkit.TextBlock block) {
-    // ML Kit doesn't provide direct confidence scores
-    // We estimate based on text characteristics
-    
-    double confidence = 0.5; // Base confidence
-    
-    // Longer text blocks typically have higher confidence
-    final textLength = block.text.length;
-    if (textLength > 10) confidence += 0.1;
-    if (textLength > 25) confidence += 0.1;
-    
-    // Check for common words (indicates better recognition)
-    final commonWords = [
-      'the', 'and', 'is', 'a', 'to', 'of', 'in', 'that', 'it', 'with', 'for', 'as', 'was', 'on', 'are', 'you'
-    ];
-    final words = block.text.toLowerCase().split(RegExp(r'\W+'));
-    final commonWordsFound = words.where((word) => commonWords.contains(word)).length;
-    confidence += (commonWordsFound / words.length) * 0.3;
-    
-    // Check for alphanumeric patterns (usually high confidence)
-    if (RegExp(r'[a-zA-Z0-9]').hasMatch(block.text)) {
-      confidence += 0.1;
-    }
-    
-    // Penalize blocks with mostly special characters
-    final specialCharCount = RegExp(r'[^a-zA-Z0-9\s]').allMatches(block.text).length;
-    if (specialCharCount > textLength / 2) {
-      confidence -= 0.2;
-    }
-    
-    return confidence.clamp(0.0, 1.0);
-  }
 
   /// Mock OCR result for testing when ML Kit is not available
   OCRResult? _mockOCRResult(Uint8List imageData) {

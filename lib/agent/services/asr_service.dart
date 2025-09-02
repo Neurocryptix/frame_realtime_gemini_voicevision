@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:speech_to_text/speech_to_text.dart';
-import 'package:speech_to_text/speech_recognition_result.dart';
 import '../models/agent_output.dart';
 
 /// ASR (Automatic Speech Recognition) service for the agent
@@ -112,7 +111,6 @@ class ASRService {
   /// Real-time transcription using speech_to_text (SEPARATE from Gemini pipeline)
   Future<ASRResult?> _realTimeTranscription(Uint8List audioData) async {
     try {
-      final startTime = DateTime.now();
       
       // Add audio to buffer for processing (doesn't interfere with main stream)
       _audioBuffer.addAll(audioData);

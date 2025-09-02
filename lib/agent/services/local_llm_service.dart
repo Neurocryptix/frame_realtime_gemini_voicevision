@@ -14,7 +14,6 @@ class LocalLLMService {
   String _baseUrl = 'http://localhost:11434'; // Default Ollama port
   String _modelName = 'llama3.2:1b'; // Lightweight model for mobile
   bool _useLocalApi = false;
-  final bool _useMockFallback = true;
   
   // HTTP client for local LLM API calls (agent-only)
   late http.Client _httpClient;
