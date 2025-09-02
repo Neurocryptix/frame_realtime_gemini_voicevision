@@ -63,6 +63,12 @@ dependencies:
   
   # TensorFlow Lite for MobileBERT embeddings
   tflite_flutter: ^0.11.0
+  
+  # Speech recognition for agent ASR (read-only, non-blocking)
+  speech_to_text: ^7.0.0
+  
+  # HTTP client for local LLM communication
+  http: ^1.2.0
 
   # ═══════════════════════════════════════════════════════════════════════════
   # GEMINI AI (For conversation, not embeddings)
