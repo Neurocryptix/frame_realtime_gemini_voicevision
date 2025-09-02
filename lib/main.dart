@@ -27,6 +27,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 // Agent system imports
 import 'package:frame_realtime_gemini_voicevision/agent/core/agent_core.dart';
 import 'package:frame_realtime_gemini_voicevision/agent/services/agent_vector_service.dart';
+import 'package:frame_realtime_gemini_voicevision/agent/services/agent_manager.dart';
 import 'package:frame_realtime_gemini_voicevision/agent/ui/agent_demo_widget.dart';
 
 // Global ObjectBox store instance
@@ -135,6 +136,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   // Agent system
   AgentCore? _agentCore;
   AgentVectorService? _agentVectorService;
+  AgentManager? _agentManager;
   
   StreamSubscription<Uint8List>? _audioSubscription;
   StreamSubscription<String>? _frameLogSubscription;
@@ -195,6 +197,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     _vectorDb?.dispose();
     _agentCore?.dispose();
     _agentVectorService?.dispose();
+    _agentManager?.dispose();
     super.dispose();
   }
 
@@ -210,6 +213,9 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       
       // Initialize agent system (non-blocking)
       await _initializeAgentSystem();
+      
+      // Initialize agent manager (unified agent services)
+      await _initializeAgentManager();
       
       _logEvent('🔧 Essential services initialized');
     } catch (e) {
@@ -255,6 +261,34 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       // Continue without agent - graceful degradation
       _agentCore = null;
       _agentVectorService = null;
+    }
+  }
+  
+  /// Initialize agent manager with unified agent services
+  Future<void> _initializeAgentManager() async {
+    try {
+      _logEvent('🤖 Initializing Agent Manager...');
+      
+      _agentManager = AgentManager(logger: _logEvent);
+      final agentReady = await _agentManager!.initialize();
+      
+      if (agentReady) {
+        _logEvent('✅ Agent Manager ready - Real services active');
+        
+        // Listen to agent outputs for UI updates
+        _agentManager!.agentOutput.listen((result) {
+          _logEvent('🤖 Agent result: ${result.llmResponse}');
+          if (result.toolCalls.isNotEmpty) {
+            _logEvent('🔧 Tools executed: ${result.toolCalls.map((t) => t.name).join(", ")}');
+          }
+        });
+      } else {
+        _logEvent('⚠️ Agent Manager initialization issues (continuing with fallbacks)');
+      }
+      
+    } catch (e) {
+      _logEvent('⚠️ Agent Manager failed (continuing without): $e');
+      _agentManager = null;
     }
   }
   
@@ -629,6 +663,11 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     } catch (e) {
       _logEvent('❌ Photo display update failed: $e');
     }
+    
+    // AGENT INTEGRATION: Process photo through agent system (parallel to Gemini)
+    if (_agentManager?.isEnabled == true) {
+      _agentManager!.processImage(jpegBytes);
+    }
   }
 
   /// Handle audio received via RxAudio (exactly like original repository)
@@ -646,6 +685,13 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       if (_audioPacketsReceived % 100 == 0) {
         _logEvent('📊 RxAudio: $_audioPacketsReceived packets, ${(_totalAudioBytes/1024).toStringAsFixed(1)} KB');
       }
+    }
+    
+    // AGENT INTEGRATION: Process audio through agent system (parallel to Gemini)
+    if (_agentManager?.isEnabled == true) {
+      // Use upsampled audio for agent processing too
+      final pcm16x16 = AudioUpsampler.upsample8kTo16k(pcm16x8);
+      _agentManager!.processAudio(pcm16x16);
     }
   }
 
@@ -771,6 +817,10 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                     if (_isConnected) _buildAudioStatusSection(),
                     if (_isConnected) const SizedBox(height: 16),
                     
+                    // Agent Status Section
+                    _buildAgentStatusSection(),
+                    const SizedBox(height: 16),
+                    
                     // Live Photo View (original repo style)
                     _buildPhotoDisplay(),
                     const SizedBox(height: 16),
@@ -866,6 +916,185 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAgentStatusSection() {
+    final agentStatus = _agentManager?.getStatus() ?? {};
+    final isAgentReady = agentStatus['isReady'] as bool? ?? false;
+    final isAgentEnabled = agentStatus['isEnabled'] as bool? ?? false;
+    final isAgentProcessing = agentStatus['isProcessing'] as bool? ?? false;
+    final services = agentStatus['services'] as Map<String, dynamic>? ?? {};
+    
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  '🤖 Agent System Status',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                if (isAgentReady)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (isAgentEnabled ? Colors.green : Colors.orange).withAlpha(50),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: (isAgentEnabled ? Colors.green : Colors.orange).withAlpha(128)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isAgentEnabled ? Icons.smart_toy : Icons.pause_circle_outline,
+                          color: isAgentEnabled ? Colors.green : Colors.orange,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isAgentEnabled ? 'Active' : 'Paused',
+                          style: TextStyle(color: isAgentEnabled ? Colors.green : Colors.orange),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            
+            // Agent processing status
+            Row(
+              children: [
+                Icon(
+                  isAgentProcessing ? Icons.psychology : Icons.psychology_outlined,
+                  color: isAgentProcessing ? Colors.blue : Colors.grey,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isAgentProcessing ? 'Processing...' : 'Idle',
+                  style: TextStyle(
+                    color: isAgentProcessing ? Colors.blue : Colors.grey,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 8),
+            
+            // Service status indicators
+            Row(
+              children: [
+                // ASR Status
+                Icon(
+                  services['asr'] == true ? Icons.mic : Icons.mic_off,
+                  color: services['asr'] == true ? Colors.green : Colors.red,
+                  size: 20,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'ASR',
+                  style: TextStyle(
+                    color: services['asr'] == true ? Colors.green : Colors.red,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                
+                // LLM Status
+                Icon(
+                  services['llm'] == true ? Icons.memory : Icons.memory_outlined,
+                  color: services['llm'] == true ? Colors.green : Colors.red,
+                  size: 20,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'LLM',
+                  style: TextStyle(
+                    color: services['llm'] == true ? Colors.green : Colors.red,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                
+                // OCR Status
+                Icon(
+                  services['ocr'] == true ? Icons.text_fields : Icons.text_fields_outlined,
+                  color: services['ocr'] == true ? Colors.green : Colors.red,
+                  size: 20,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'OCR',
+                  style: TextStyle(
+                    color: services['ocr'] == true ? Colors.green : Colors.red,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 8),
+            
+            // Agent controls
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: isAgentReady ? () {
+                      _agentManager?.setEnabled(!isAgentEnabled);
+                      setState(() {}); // Refresh UI
+                    } : null,
+                    icon: Icon(isAgentEnabled ? Icons.pause : Icons.play_arrow),
+                    label: Text(isAgentEnabled ? 'Pause Agent' : 'Resume Agent'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: (isAgentEnabled ? Colors.orange : Colors.green).withAlpha(25),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: (_isConnected && _lastPhoto != null) ? () {
+                    _agentManager?.processImage(_lastPhoto!);
+                    _logEvent('🤖 Manual agent image processing triggered');
+                  } : null,
+                  icon: const Icon(Icons.image_search),
+                  label: const Text('Analyze Photo'),
+                ),
+              ],
+            ),
+            
+            // Status messages
+            if (!isAgentReady)
+              const Padding(
+                padding: EdgeInsets.only(top: 8.0),
+                child: Text(
+                  '⚠️ Agent system not ready',
+                  style: TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: Colors.orange,
+                  ),
+                ),
+              ),
+            if (isAgentReady && !isAgentEnabled)
+              const Padding(
+                padding: EdgeInsets.only(top: 8.0),
+                child: Text(
+                  '⏸️ Agent processing paused',
+                  style: TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: Colors.orange,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
