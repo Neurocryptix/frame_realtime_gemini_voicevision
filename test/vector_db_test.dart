@@ -3,39 +3,66 @@ import 'package:frame_realtime_gemini_voicevision/services/vector_db_service.dar
 import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart';
 import 'dart:io';
 
+/// Helper function to conditionally run tests when ObjectBox is available
+void objectBoxTest(String description, dynamic Function() body, {required bool objectBoxAvailable}) {
+  test(description, () {
+    if (!objectBoxAvailable) {
+      markTestSkipped('ObjectBox not available in test environment');
+      return;
+    }
+    return body();
+  });
+}
+
 void main() {
   group('VectorDbService MobileBERT Integration Tests', () {
     late VectorDbService vectorDb;
-    late Store store;
+    late Store? store;
     final List<String> testLogs = [];
+    bool objectBoxAvailable = false;
     
     setUpAll(() async {
-      // Create a temporary directory for test database
-      final testDir = Directory.systemTemp.createTempSync('vector_db_test');
-      store = Store(getObjectBoxModel(), directory: testDir.path);
+      try {
+        // Create a temporary directory for test database
+        final testDir = Directory.systemTemp.createTempSync('vector_db_test');
+        store = Store(getObjectBoxModel(), directory: testDir.path);
+        objectBoxAvailable = true;
+      } catch (e) {
+        // ObjectBox native library not available in test environment
+        print('⚠️ ObjectBox not available in test environment: $e');
+        print('📋 All tests in this group will be skipped');
+        objectBoxAvailable = false;
+        store = null;
+      }
     });
     
     setUp(() async {
+      if (!objectBoxAvailable) return;
+      
       testLogs.clear();
       vectorDb = VectorDbService((message) => testLogs.add(message));
-      await vectorDb.initialize(store);
+      await vectorDb.initialize(store!);
     });
     
     tearDown(() async {
+      if (!objectBoxAvailable) return;
+      
       await vectorDb.clearAll();
       await vectorDb.dispose();
     });
     
     tearDownAll(() async {
-      store.close();
+      if (objectBoxAvailable && store != null) {
+        store!.close();
+      }
     });
 
-    test('VectorDbService initialization', () {
+    objectBoxTest('VectorDbService initialization', () {
       expect(testLogs.any((log) => log.contains('VectorDB initialized')), true);
       expect(vectorDb.getDocumentCount(), 0);
-    });
+    }, objectBoxAvailable: objectBoxAvailable);
 
-    test('MobileBERT model loading verification', () async {
+    objectBoxTest('MobileBERT model loading verification', () async {
       // Check if model was loaded successfully
       final hasModelLoadLogs = testLogs.any((log) => 
           log.contains('Loading MobileBERT model') || 
@@ -52,7 +79,7 @@ void main() {
       
       expect(hasVocabLogs, true, 
           reason: 'Should have attempted to load vocabulary');
-    });
+    }, objectBoxAvailable: objectBoxAvailable);
 
     test('Embedding generation (384 dimensions)', () async {
       const testText = 'This is a test sentence for MobileBERT embedding generation.';

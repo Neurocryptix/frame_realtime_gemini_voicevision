@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+// import 'package:path_provider/path_provider.dart'; // Temporarily unused while flutter_gemma is disabled
+// import 'package:flutter_gemma/flutter_gemma.dart'; // Temporarily disabled pending API verification
 import '../models/agent_output.dart';
 
 /// Local LLM service with tool calling capabilities
@@ -14,9 +17,20 @@ class LocalLLMService {
   String _baseUrl = 'http://localhost:11434'; // Default Ollama port
   String _modelName = 'llama3.2:1b'; // Lightweight model for mobile
   bool _useLocalApi = false;
+  bool _useGemmaNano = false;
   
   // HTTP client for local LLM API calls (agent-only)
   late http.Client _httpClient;
+  
+  // Gemma Nano for on-device agentic processing  
+  dynamic _gemmaModel; // Will be properly typed once flutter_gemma API is verified
+  bool _gemmaInitialized = false;
+  bool _modelDownloadInProgress = false;
+  String? _modelPath;
+  
+  // Model download configuration
+  static const String _modelFileName = 'gemma_3_nano_2b_it.bin';
+  // static const String _modelAssetPath = 'assets/models/$_modelFileName'; // Unused while API is disabled
   
   LocalLLMService({
     void Function(String)? logger,
@@ -31,15 +45,25 @@ class LocalLLMService {
   /// Initialize the local LLM service (SEPARATE from Gemini)
   Future<bool> initialize() async {
     try {
-      _logger?.call('🤖 Initializing REAL Local LLM service (agent-only)...');
+      _logger?.call('🤖 Initializing Local LLM service (agent-only)...');
       
-      // Try to connect to local LLM API (Ollama or custom)
+      // First, try to initialize Gemma Nano for on-device processing
+      final hasGemmaNano = await _initializeGemmaNano();
+      
+      if (hasGemmaNano) {
+        _useGemmaNano = true;
+        _isReady = true;
+        _logger?.call('✅ Gemma Nano initialized for on-device agentic processing');
+        return true;
+      }
+      
+      // Fallback to local LLM API (Ollama or custom)
       final hasLocalLLM = await _testLocalLLMConnection();
       
       if (hasLocalLLM) {
         _useLocalApi = true;
         _isReady = true;
-        _logger?.call('✅ REAL Local LLM connected at $_baseUrl (model: $_modelName)');
+        _logger?.call('✅ Local LLM connected at $_baseUrl (model: $_modelName)');
         return true;
       } else {
         _logger?.call('⚠️ No local LLM found, falling back to mock implementation');
@@ -54,8 +78,128 @@ class LocalLLMService {
       _logger?.call('❌ Local LLM initialization failed, using mock: $e');
       // Always fall back gracefully
       _useLocalApi = false;
+      _useGemmaNano = false;
       _isReady = true;
       return true;
+    }
+  }
+  
+  /// Initialize Gemma Nano for on-device agentic processing
+  Future<bool> _initializeGemmaNano() async {
+    try {
+      _logger?.call('🧠 Initializing Gemma Nano for on-device processing...');
+      
+      // Only proceed on Android (iOS support limited in flutter_gemma)
+      if (!Platform.isAndroid) {
+        _logger?.call('⚠️ Gemma Nano primarily supported on Android, skipping...');
+        return false;
+      }
+      
+      // Check if model is already installed
+      // TODO: Re-enable when flutter_gemma API is verified
+      // final modelManager = FlutterGemmaPlugin.instance.modelManager;
+      final isModelInstalled = await _checkModelInstalled();
+      
+      if (!isModelInstalled) {
+        _logger?.call('📥 Installing Gemma Nano model...');
+        final installSuccess = await _installModel();
+        if (!installSuccess) {
+          _logger?.call('❌ Model installation failed, falling back to other systems');
+          return false;
+        }
+      } else {
+        _logger?.call('✅ Gemma Nano model already installed');
+      }
+      
+      // Initialize the model
+      final initSuccess = await _initializeGemmaModel();
+      if (initSuccess) {
+        _gemmaInitialized = true;
+        _logger?.call('✅ Gemma Nano initialized successfully for agentic processing');
+        return true;
+      } else {
+        _logger?.call('❌ Failed to initialize Gemma Nano model');
+        return false;
+      }
+      
+    } catch (e) {
+      _logger?.call('❌ Gemma Nano initialization failed: $e');
+      _gemmaModel = null;
+      _gemmaInitialized = false;
+      return false;
+    }
+  }
+  
+  /// Check if Gemma Nano model is installed
+  Future<bool> _checkModelInstalled() async {
+    try {
+      // TODO: Re-enable when flutter_gemma API is verified
+      // final modelManager = FlutterGemmaPlugin.instance.modelManager;
+      // final installedModels = await modelManager.getInstalledModels();
+      
+      // TODO: Re-enable when flutter_gemma API is verified
+      // final isInstalled = installedModels.any((model) => 
+      //   model.path.contains(_modelFileName) || 
+      //   model.path.contains('gemma') ||
+      //   model.type == ModelType.gemmaIt ||
+      //   model.type == ModelType.gemma2bIt
+      // );
+      const isInstalled = false; // Disabled pending API verification
+      
+      // Dead code removed since isInstalled is always false while API is disabled
+      
+      return isInstalled;
+    } catch (e) {
+      _logger?.call('❌ Error checking model installation: $e');
+      return false;
+    }
+  }
+  
+  /// Install Gemma Nano model from assets
+  Future<bool> _installModel() async {
+    if (_modelDownloadInProgress) {
+      _logger?.call('⏳ Model installation already in progress...');
+      return false;
+    }
+    
+    try {
+      _modelDownloadInProgress = true;
+      _logger?.call('📥 Installing Gemma Nano model from assets...');
+      
+      // TODO: Re-enable when flutter_gemma API is verified
+      _logger?.call('⚠️ Gemma Nano model installation currently disabled pending API verification');
+      return false;
+      
+    } catch (e) {
+      _logger?.call('❌ Model installation failed: $e');
+      return false;
+    } finally {
+      _modelDownloadInProgress = false;
+    }
+  }
+  
+  /// Initialize Gemma model after installation
+  Future<bool> _initializeGemmaModel() async {
+    try {
+      _logger?.call('🔧 Initializing Gemma Nano model...');
+      
+      // TODO: Re-enable when flutter_gemma API is verified
+      // Create the model with appropriate settings for on-device agentic processing
+      // _gemmaModel = await FlutterGemmaPlugin.instance.createModel(
+      //   modelType: ModelType.gemmaIt, // Use the IT (instruction-tuned) variant
+      //   preferredBackend: PreferredBackend.gpu, // GPU for better performance
+      //   maxTokens: 256, // Keep responses concise for fast decision making
+      // );
+      
+      _logger?.call('⚠️ Gemma Nano model creation currently disabled pending API verification');
+      
+      // Model creation is currently disabled
+      return false;
+      
+    } catch (e) {
+      _logger?.call('❌ Model initialization failed: $e');
+      _gemmaModel = null;
+      return false;
     }
   }
   
@@ -113,11 +257,14 @@ class LocalLLMService {
     try {
       final startTime = DateTime.now();
       
-      // Use real local LLM if available, otherwise fall back to mock
+      // Use best available LLM: Gemma Nano > Local API > Mock
       Map<String, dynamic> response;
       String modelType;
       
-      if (_useLocalApi) {
+      if (_useGemmaNano && _gemmaInitialized) {
+        response = await _gemmaNanoProcess(context, availableTools);
+        modelType = 'gemma_nano';
+      } else if (_useLocalApi) {
         response = await _realLLMProcess(context, availableTools);
         modelType = 'real_local_llm';
       } else {
@@ -126,7 +273,14 @@ class LocalLLMService {
       }
       
       final processingTime = DateTime.now().difference(startTime);
-      final source = _useLocalApi ? "REAL" : "MOCK";
+      String source;
+      if (_useGemmaNano && _gemmaInitialized) {
+        source = "GEMMA_NANO";
+      } else if (_useLocalApi) {
+        source = "REAL_LOCAL";
+      } else {
+        source = "MOCK";
+      }
       _logger?.call('🧠 Agent LLM ($source) processed in ${processingTime.inMilliseconds}ms');
       
       return LLMResponse(
@@ -158,6 +312,87 @@ class LocalLLMService {
     }
   }
 
+  /// Gemma Nano on-device processing for agentic decision making
+  Future<Map<String, dynamic>> _gemmaNanoProcess(String context, List<String> availableTools) async {
+    try {
+      if (!_gemmaInitialized || _gemmaModel == null) {
+        throw Exception('Gemma Nano not initialized');
+      }
+      
+      // TODO: Re-enable when flutter_gemma API is verified
+      // Construct prompt specifically for agentic decision making
+      // final systemPrompt = _buildAgenticSystemPrompt(availableTools);
+      // final fullPrompt = '$systemPrompt\n\nUser Context: $context\n\nAnalyze this context and decide what actions to take. Respond with your reasoning and any tool calls needed:';
+      
+      _logger?.call('🧠 Processing with Gemma Nano: ${_truncateForLog(context)} (disabled)');
+      
+      // TODO: Re-enable when flutter_gemma API is verified
+      // Generate response using session-based approach for better control
+      // final session = await _gemmaModel!.createSession();
+      // await session.addQueryChunk(
+      //   Message.text(text: fullPrompt, isUser: true)
+      // );
+      // 
+      // final response = await session.getResponse();
+      // await session.close(); // Important: close session to free resources
+      
+      // Placeholder response while API is being verified
+      const response = 'Gemma Nano processing currently disabled pending API verification';
+      
+      if (response.isNotEmpty) {
+        _logger?.call('✅ Gemma Nano response: ${_truncateForLog(response)}');
+        // Parse the response to extract content and tool calls
+        return _parseRealLLMResponse(response);
+      } else {
+        throw Exception('Empty response from Gemma Nano');
+      }
+      
+    } catch (e) {
+      _logger?.call('❌ Gemma Nano processing failed: $e');
+      rethrow;
+    }
+  }
+  
+  /// Truncate text for logging purposes
+  String _truncateForLog(String text, {int maxLength = 100}) {
+    if (text.length <= maxLength) return text;
+    return '${text.substring(0, maxLength)}...';
+  }
+  
+  /// Build optimized system prompt for agentic decision making with Gemma Nano
+  /// TODO: Re-enable when flutter_gemma API is verified
+  // String _buildAgenticSystemPrompt(List<String> availableTools) {
+  //   final toolDescriptions = availableTools.map((tool) {
+  //     switch (tool) {
+  //       case 'store_memory':
+  //         return '- store_memory(content, category): Store important information';
+  //       case 'retrieve_memory':
+  //         return '- retrieve_memory(query): Search stored information';
+  //       case 'update_memory':
+  //         return '- update_memory(id, content): Update stored information';
+  //       case 'analyze_content':
+  //         return '- analyze_content(type, content): Analyze content for insights';
+  //       default:
+  //         return '- $tool: Available tool';
+  //     }
+  //   }).join('\n');
+  //   
+  //   return '''You are an intelligent agent for Frame smart glasses. Your job is to make quick, smart decisions about processing user interactions and visual content.
+  //
+  // Available tools:
+  // $toolDescriptions
+  //
+  // Instructions:
+  // - Be concise and decisive
+  // - Use tools when data should be stored or retrieved
+  // - For speech/text: usually store important information
+  // - For visual content: analyze and store if significant
+  // - Format tool calls like: TOOL_CALL: tool_name(param1="value1", param2="value2")
+  // - Give brief reasoning for your decisions
+  //
+  // Respond with your analysis and tool calls:''';
+  // }
+
   /// Real local LLM processing using Ollama or similar API
   Future<Map<String, dynamic>> _realLLMProcess(String context, List<String> availableTools) async {
     try {
@@ -179,7 +414,7 @@ class LocalLLMService {
             'max_tokens': 500,
           },
         }),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 30));
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -445,21 +680,139 @@ Analyze the user context and determine if any tools should be called. Respond wi
     ];
   }
 
-  /// Get service statistics
+  /// Get service statistics including model download status
   Map<String, dynamic> getStatistics() {
+    String modelType;
+    int maxContextLength;
+    
+    if (_useGemmaNano && _gemmaInitialized) {
+      modelType = 'gemma_nano';
+      maxContextLength = 2048; // Gemma Nano context window
+    } else if (_useLocalApi) {
+      modelType = 'local_llm';
+      maxContextLength = 4096; // Typical local LLM
+    } else {
+      modelType = 'mock_llm';
+      maxContextLength = 4096; // Mock value
+    }
+    
     return {
       'isReady': _isReady,
-      'modelType': 'mock_llm',
+      'modelType': modelType,
+      'useGemmaNano': _useGemmaNano,
+      'gemmaInitialized': _gemmaInitialized,
+      'modelDownloadInProgress': _modelDownloadInProgress,
+      'modelPath': _modelPath,
+      'useLocalApi': _useLocalApi,
       'supportedTools': getToolDefinitions().map((tool) => tool['name']).toList(),
-      'maxContextLength': 4096, // Mock value
+      'maxContextLength': maxContextLength,
     };
+  }
+  
+  /// Check if Gemma Nano model download is in progress
+  bool get isModelDownloadInProgress => _modelDownloadInProgress;
+  
+  /// Get model installation status and information
+  Future<Map<String, dynamic>> getModelStatus() async {
+    try {
+      final modelInstalled = await _checkModelInstalled();
+      // TODO: Re-enable when flutter_gemma API is verified
+      // final modelManager = FlutterGemmaPlugin.instance.modelManager;
+      
+      Map<String, dynamic> status = {
+        'modelInstalled': modelInstalled,
+        'modelPath': _modelPath,
+        'modelFileName': _modelFileName,
+        'installInProgress': _modelDownloadInProgress,
+        'gemmaInitialized': _gemmaInitialized,
+      };
+      
+      // TODO: Re-enable when flutter_gemma API is verified
+      // Get installed models info
+      // try {
+      //   final installedModels = await modelManager.getInstalledModels();
+      //   status['installedModelsCount'] = installedModels.length;
+      //   
+      //   if (installedModels.isNotEmpty) {
+      //     status['installedModels'] = installedModels.map((model) => {
+      //       'path': model.path,
+      //       'type': model.type.toString(),
+      //       'size': model.sizeInBytes,
+      //     }).toList();
+      //   }
+      // } catch (e) {
+      //   status['modelInfoError'] = e.toString();
+      // }
+      
+      status['note'] = 'Model info disabled pending flutter_gemma API verification';
+      
+      return status;
+    } catch (e) {
+      return {
+        'error': e.toString(),
+        'modelInstalled': false,
+        'installInProgress': _modelDownloadInProgress,
+      };
+    }
+  }
+  
+  /// Force reinstallation of Gemma Nano model (for updates or corruption recovery)
+  Future<bool> forceModelReinstall() async {
+    try {
+      _logger?.call('🔄 Forcing Gemma Nano model reinstallation...');
+      
+      // TODO: Re-enable when flutter_gemma API is verified
+      // final modelManager = FlutterGemmaPlugin.instance.modelManager;
+      
+      // TODO: Re-enable when flutter_gemma API is verified
+      // Clean up existing models
+      // try {
+      //   final installedModels = await modelManager.getInstalledModels();
+      //   for (final model in installedModels) {
+      //     await modelManager.uninstallModel(model);
+      //     _logger?.call('🗑️ Uninstalled model: ${model.path}');
+      //   }
+      // } catch (e) {
+      //   _logger?.call('⚠️ Error during cleanup: $e');
+      // }
+      
+      _logger?.call('⚠️ Model cleanup disabled pending API verification');
+      
+      // Reset state
+      _gemmaInitialized = false;
+      // TODO: Re-enable when flutter_gemma API is verified
+      // _gemmaModel?.dispose();
+      _gemmaModel = null;
+      _modelPath = null;
+      
+      // Trigger fresh installation and initialization
+      return await _initializeGemmaNano();
+      
+    } catch (e) {
+      _logger?.call('❌ Force reinstallation failed: $e');
+      return false;
+    }
   }
 
   /// Dispose resources (doesn't affect main Gemini pipeline)
   void dispose() {
     _httpClient.close();
+    
+    // Clean up Gemma Nano resources
+    if (_gemmaModel != null) {
+      try {
+        _gemmaModel!.dispose();
+        _logger?.call('🧹 Gemma model disposed');
+      } catch (e) {
+        _logger?.call('⚠️ Error disposing Gemma model: $e');
+      }
+      _gemmaModel = null;
+    }
+    
     _isReady = false;
     _useLocalApi = false;
-    _logger?.call('🧹 Real Local LLM service disposed (agent-only)');
+    _useGemmaNano = false;
+    _gemmaInitialized = false;
+    _logger?.call('🧹 Local LLM service disposed (agent-only)');
   }
 }
