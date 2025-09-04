@@ -4,16 +4,16 @@ import 'package:objectbox/objectbox.dart';
 class Document {
   @Id()
   int id = 0;
-  
+
   String textContent;
-  
+
   @Property(type: PropertyType.floatVector)
   @HnswIndex(dimensions: 384)
   List<double>? embedding;
-  
+
   @Property(type: PropertyType.date)
   DateTime? createdAt;
-  
+
   String? metadata;
 
   Document({

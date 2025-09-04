@@ -12,92 +12,96 @@ class AgentManager {
   final void Function(String)? _logger;
   bool _isReady = false;
   bool _isEnabled = false;
-  
+
   // Agent services
   late ASRService _asrService;
   late LocalLLMService _llmService;
   late OCRService _ocrService;
-  
+
   // Agent processing state
   bool _isProcessing = false;
   final List<String> _availableTools = [
     'store_memory',
-    'retrieve_memory', 
+    'retrieve_memory',
     'analyze_content',
     'update_memory',
   ];
-  
+
   // Agent outputs stream
-  final StreamController<AgentProcessingResult> _agentOutputController = 
+  final StreamController<AgentProcessingResult> _agentOutputController =
       StreamController<AgentProcessingResult>.broadcast();
-  
-  Stream<AgentProcessingResult> get agentOutput => _agentOutputController.stream;
-  
+
+  Stream<AgentProcessingResult> get agentOutput =>
+      _agentOutputController.stream;
+
   AgentManager({void Function(String)? logger}) : _logger = logger;
-  
+
   /// Initialize all agent services
   Future<bool> initialize() async {
     try {
       _logger?.call('🤖 Initializing Agent Manager...');
-      
+
       // Initialize individual services
       _asrService = ASRService(logger: _logger);
       _llmService = LocalLLMService(logger: _logger);
       _ocrService = OCRService(logger: _logger);
-      
+
       // Initialize services in parallel
       final results = await Future.wait([
         _asrService.initialize(),
-        _llmService.initialize(), 
+        _llmService.initialize(),
         _ocrService.initialize(),
       ]);
-      
+
       final allReady = results.every((ready) => ready);
-      
+
       if (allReady) {
         _isReady = true;
         _isEnabled = true; // Auto-enable when ready
         _logger?.call('✅ Agent Manager ready - All services initialized');
         return true;
       } else {
-        _logger?.call('⚠️ Agent Manager partial initialization - some services failed');
+        _logger?.call(
+            '⚠️ Agent Manager partial initialization - some services failed');
         _isReady = true; // Still usable with graceful degradation
         _isEnabled = true;
         return true;
       }
-      
     } catch (e) {
       _logger?.call('❌ Agent Manager initialization failed: $e');
       return false;
     }
   }
-  
+
   /// Check if agent system is ready
   bool get isReady => _isReady;
-  
+
   /// Check if agent system is enabled
   bool get isEnabled => _isEnabled;
-  
+
   /// Enable/disable agent processing
   void setEnabled(bool enabled) {
     _isEnabled = enabled;
-    _logger?.call(enabled ? '✅ Agent processing enabled' : '⏸️ Agent processing disabled');
+    _logger?.call(enabled
+        ? '✅ Agent processing enabled'
+        : '⏸️ Agent processing disabled');
   }
-  
+
   /// Process audio through agent pipeline (parallel to Gemini)
   Future<void> processAudio(Uint8List audioData) async {
     if (!_isReady || !_isEnabled || _isProcessing) return;
-    
+
     try {
       _isProcessing = true;
       _logger?.call('🎤 Agent processing audio (${audioData.length} bytes)...');
-      
+
       // Run ASR on audio
       final asrResult = await _asrService.transcribeAudio(audioData);
-      
+
       if (asrResult != null && asrResult.text.isNotEmpty) {
-        _logger?.call('🎤 Agent ASR: "${asrResult.text}" (${asrResult.confidence.toStringAsFixed(2)})');
-        
+        _logger?.call(
+            '🎤 Agent ASR: "${asrResult.text}" (${asrResult.confidence.toStringAsFixed(2)})');
+
         // Process with LLM if we have text
         await _processWithLLM(
           context: 'Audio transcription: ${asrResult.text}',
@@ -109,28 +113,28 @@ class AgentManager {
           },
         );
       }
-      
     } catch (e) {
       _logger?.call('❌ Agent audio processing error: $e');
     } finally {
       _isProcessing = false;
     }
   }
-  
+
   /// Process image through agent pipeline (parallel to Gemini)
   Future<void> processImage(Uint8List imageData) async {
     if (!_isReady || !_isEnabled || _isProcessing) return;
-    
+
     try {
       _isProcessing = true;
       _logger?.call('📸 Agent processing image (${imageData.length} bytes)...');
-      
+
       // Run OCR on image
       final ocrResult = await _ocrService.extractText(imageData);
-      
+
       if (ocrResult != null && ocrResult.text.isNotEmpty) {
-        _logger?.call('👁️ Agent OCR: "${ocrResult.text}" (${ocrResult.confidence.toStringAsFixed(2)})');
-        
+        _logger?.call(
+            '👁️ Agent OCR: "${ocrResult.text}" (${ocrResult.confidence.toStringAsFixed(2)})');
+
         // Process with LLM if we have text
         await _processWithLLM(
           context: 'Image OCR text: ${ocrResult.text}',
@@ -145,25 +149,25 @@ class AgentManager {
       } else {
         _logger?.call('👁️ Agent OCR: No text found in image');
       }
-      
     } catch (e) {
       _logger?.call('❌ Agent image processing error: $e');
     } finally {
       _isProcessing = false;
     }
   }
-  
+
   /// Process multimodal input (audio + image)
-  Future<void> processMultimodal(Uint8List? audioData, Uint8List? imageData) async {
+  Future<void> processMultimodal(
+      Uint8List? audioData, Uint8List? imageData) async {
     if (!_isReady || !_isEnabled || _isProcessing) return;
-    
+
     try {
       _isProcessing = true;
       _logger?.call('🔄 Agent multimodal processing...');
-      
+
       String context = 'Multimodal input: ';
       final inputData = <String, dynamic>{};
-      
+
       // Process audio if available
       if (audioData != null) {
         final asrResult = await _asrService.transcribeAudio(audioData);
@@ -175,7 +179,7 @@ class AgentManager {
           };
         }
       }
-      
+
       // Process image if available
       if (imageData != null) {
         final ocrResult = await _ocrService.extractText(imageData);
@@ -188,7 +192,7 @@ class AgentManager {
           };
         }
       }
-      
+
       if (inputData.isNotEmpty) {
         await _processWithLLM(
           context: context,
@@ -196,14 +200,13 @@ class AgentManager {
           inputData: inputData,
         );
       }
-      
     } catch (e) {
       _logger?.call('❌ Agent multimodal processing error: $e');
     } finally {
       _isProcessing = false;
     }
   }
-  
+
   /// Process context with local LLM and execute tools
   Future<void> _processWithLLM({
     required String context,
@@ -216,17 +219,17 @@ class AgentManager {
         context: context,
         availableTools: _availableTools,
       );
-      
+
       if (llmResponse != null) {
         _logger?.call('🧠 Agent LLM response: "${llmResponse.content}"');
-        
+
         // Execute any tool calls
         final toolResults = <String, dynamic>{};
         for (final toolCall in llmResponse.toolCalls) {
           final result = await _executeTool(toolCall);
           toolResults[toolCall.name] = result;
         }
-        
+
         // Emit agent processing result
         final agentResult = AgentProcessingResult(
           inputType: inputType,
@@ -237,21 +240,20 @@ class AgentManager {
           processingTime: llmResponse.processingTime,
           timestamp: DateTime.now(),
         );
-        
+
         _agentOutputController.add(agentResult);
         _logger?.call('✅ Agent processing complete - result emitted');
       }
-      
     } catch (e) {
       _logger?.call('❌ Agent LLM processing error: $e');
     }
   }
-  
+
   /// Execute a tool call
   Future<Map<String, dynamic>> _executeTool(ToolCall toolCall) async {
     try {
       _logger?.call('🔧 Executing tool: ${toolCall.name}');
-      
+
       switch (toolCall.name) {
         case 'store_memory':
           return await _executeStoreMemory(toolCall.parameters);
@@ -270,15 +272,16 @@ class AgentManager {
       return {'error': e.toString()};
     }
   }
-  
+
   /// Execute store_memory tool
-  Future<Map<String, dynamic>> _executeStoreMemory(Map<String, dynamic> params) async {
+  Future<Map<String, dynamic>> _executeStoreMemory(
+      Map<String, dynamic> params) async {
     // TODO: Implement with vector database integration
     final content = params['content']?.toString() ?? '';
     final category = params['category']?.toString() ?? 'general';
-    
+
     _logger?.call('💾 Storing memory: $category - $content');
-    
+
     return {
       'success': true,
       'action': 'stored',
@@ -287,14 +290,15 @@ class AgentManager {
       'id': 'mock_${DateTime.now().millisecondsSinceEpoch}',
     };
   }
-  
+
   /// Execute retrieve_memory tool
-  Future<Map<String, dynamic>> _executeRetrieveMemory(Map<String, dynamic> params) async {
+  Future<Map<String, dynamic>> _executeRetrieveMemory(
+      Map<String, dynamic> params) async {
     // TODO: Implement with vector database integration
     final query = params['query']?.toString() ?? '';
-    
+
     _logger?.call('🔍 Retrieving memories for: $query');
-    
+
     return {
       'success': true,
       'action': 'retrieved',
@@ -305,14 +309,15 @@ class AgentManager {
       ],
     };
   }
-  
+
   /// Execute analyze_content tool
-  Future<Map<String, dynamic>> _executeAnalyzeContent(Map<String, dynamic> params) async {
+  Future<Map<String, dynamic>> _executeAnalyzeContent(
+      Map<String, dynamic> params) async {
     final type = params['type']?.toString() ?? 'text';
     final content = params['content']?.toString() ?? '';
-    
+
     _logger?.call('🔍 Analyzing content: $type - $content');
-    
+
     return {
       'success': true,
       'action': 'analyzed',
@@ -326,15 +331,16 @@ class AgentManager {
       },
     };
   }
-  
+
   /// Execute update_memory tool
-  Future<Map<String, dynamic>> _executeUpdateMemory(Map<String, dynamic> params) async {
+  Future<Map<String, dynamic>> _executeUpdateMemory(
+      Map<String, dynamic> params) async {
     // TODO: Implement with vector database integration
     final id = params['id']?.toString() ?? '';
     final content = params['content']?.toString() ?? '';
-    
+
     _logger?.call('✏️ Updating memory: $id - $content');
-    
+
     return {
       'success': true,
       'action': 'updated',
@@ -342,7 +348,7 @@ class AgentManager {
       'content': content,
     };
   }
-  
+
   /// Get agent status for UI
   Map<String, dynamic> getStatus() {
     return {
@@ -357,7 +363,7 @@ class AgentManager {
       'availableTools': _availableTools,
     };
   }
-  
+
   /// Dispose all resources
   void dispose() {
     _agentOutputController.close();
@@ -379,7 +385,7 @@ class AgentProcessingResult {
   final Map<String, dynamic> toolResults;
   final Duration processingTime;
   final DateTime timestamp;
-  
+
   AgentProcessingResult({
     required this.inputType,
     required this.inputData,
@@ -389,7 +395,7 @@ class AgentProcessingResult {
     required this.processingTime,
     required this.timestamp,
   });
-  
+
   @override
   String toString() {
     return 'AgentProcessingResult('

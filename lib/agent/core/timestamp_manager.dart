@@ -5,11 +5,11 @@ import 'stream_observer.dart';
 /// This is critical for associating agent outputs with the correct visual context
 class TimestampManager {
   final void Function(String)? _logger;
-  
+
   // Correlation windows
   static const Duration defaultCorrelationWindow = Duration(seconds: 2);
   static const Duration extendedCorrelationWindow = Duration(seconds: 5);
-  
+
   TimestampManager({void Function(String)? logger}) : _logger = logger;
 
   /// Correlate ASR/OCR output timestamp with available photos
@@ -20,20 +20,21 @@ class TimestampManager {
     Duration? customWindow,
   }) {
     final window = customWindow ?? defaultCorrelationWindow;
-    
-    final correlatedPhotos = availablePhotos.where((photo) => 
-      photo.isWithinWindow(outputTimestamp, window)
-    ).toList();
-    
+
+    final correlatedPhotos = availablePhotos
+        .where((photo) => photo.isWithinWindow(outputTimestamp, window))
+        .toList();
+
     // Sort by proximity to the output timestamp
     correlatedPhotos.sort((a, b) {
       final aDiff = outputTimestamp.difference(a.timestamp).abs();
       final bDiff = outputTimestamp.difference(b.timestamp).abs();
       return aDiff.compareTo(bDiff);
     });
-    
-    _logger?.call('🔗 Correlated ${correlatedPhotos.length} photos with output at $outputTimestamp');
-    
+
+    _logger?.call(
+        '🔗 Correlated ${correlatedPhotos.length} photos with output at $outputTimestamp');
+
     return correlatedPhotos;
   }
 
@@ -49,7 +50,7 @@ class TimestampManager {
       availablePhotos: availablePhotos,
       customWindow: customWindow,
     );
-    
+
     return correlatedPhotos.isNotEmpty ? correlatedPhotos.first : null;
   }
 
@@ -61,7 +62,7 @@ class TimestampManager {
   }) {
     final window = windowSize ?? defaultCorrelationWindow;
     final halfWindow = Duration(milliseconds: window.inMilliseconds ~/ 2);
-    
+
     return TemporalWindow(
       startTime: centerTime.subtract(halfWindow),
       endTime: centerTime.add(halfWindow),
@@ -75,22 +76,24 @@ class TimestampManager {
     if (timestamps.isEmpty) {
       return TemporalAnalysis.empty();
     }
-    
+
     final sortedTimestamps = List<DateTime>.from(timestamps)..sort();
-    
+
     final intervals = <Duration>[];
     for (int i = 1; i < sortedTimestamps.length; i++) {
       intervals.add(sortedTimestamps[i].difference(sortedTimestamps[i - 1]));
     }
-    
-    final totalDuration = sortedTimestamps.last.difference(sortedTimestamps.first);
-    
+
+    final totalDuration =
+        sortedTimestamps.last.difference(sortedTimestamps.first);
+
     Duration? averageInterval;
     if (intervals.isNotEmpty) {
-      final totalMs = intervals.fold<int>(0, (sum, interval) => sum + interval.inMilliseconds);
+      final totalMs = intervals.fold<int>(
+          0, (sum, interval) => sum + interval.inMilliseconds);
       averageInterval = Duration(milliseconds: totalMs ~/ intervals.length);
     }
-    
+
     return TemporalAnalysis(
       firstTimestamp: sortedTimestamps.first,
       lastTimestamp: sortedTimestamps.last,
@@ -108,10 +111,10 @@ class TimestampManager {
     required List<TimestampedData<Uint8List>> availablePhotos,
   }) {
     final photoTimestamps = availablePhotos.map((p) => p.timestamp).toList();
-    
+
     int asrPhotoCorrelations = 0;
     int ocrPhotoCorrelations = 0;
-    
+
     // Count successful correlations
     for (final asrTime in asrTimestamps) {
       final correlatedPhotos = correlateWithPhotos(
@@ -120,7 +123,7 @@ class TimestampManager {
       );
       if (correlatedPhotos.isNotEmpty) asrPhotoCorrelations++;
     }
-    
+
     for (final ocrTime in ocrTimestamps) {
       final correlatedPhotos = correlateWithPhotos(
         outputTimestamp: ocrTime,
@@ -128,7 +131,7 @@ class TimestampManager {
       );
       if (correlatedPhotos.isNotEmpty) ocrPhotoCorrelations++;
     }
-    
+
     return CorrelationReport(
       asrEventCount: asrTimestamps.length,
       ocrEventCount: ocrTimestamps.length,
@@ -148,7 +151,7 @@ class TemporalWindow {
   final DateTime startTime;
   final DateTime endTime;
   final DateTime centerTime;
-  
+
   const TemporalWindow({
     required this.startTime,
     required this.endTime,
@@ -164,7 +167,8 @@ class TemporalWindow {
   Duration get duration => endTime.difference(startTime);
 
   @override
-  String toString() => 'TemporalWindow($startTime - $endTime, center: $centerTime)';
+  String toString() =>
+      'TemporalWindow($startTime - $endTime, center: $centerTime)';
 }
 
 /// Analysis of temporal relationships between timestamped events
@@ -175,7 +179,7 @@ class TemporalAnalysis {
   final int eventCount;
   final Duration? averageInterval;
   final List<Duration> intervals;
-  
+
   const TemporalAnalysis({
     required this.firstTimestamp,
     required this.lastTimestamp,
@@ -184,7 +188,7 @@ class TemporalAnalysis {
     required this.averageInterval,
     required this.intervals,
   });
-  
+
   factory TemporalAnalysis.empty() {
     return const TemporalAnalysis(
       firstTimestamp: null,
@@ -207,7 +211,7 @@ class TemporalAnalysis {
     final freqStr = frequency?.toStringAsFixed(2) ?? 'N/A';
     final avgStr = averageInterval?.inMilliseconds.toString() ?? 'N/A';
     return 'TemporalAnalysis(events: $eventCount, duration: ${totalDuration.inSeconds}s, '
-           'frequency: $freqStr Hz, avgInterval: $avgStr ms)';
+        'frequency: $freqStr Hz, avgInterval: $avgStr ms)';
   }
 }
 
@@ -222,7 +226,7 @@ class CorrelationReport {
   final TemporalAnalysis ocrTimingAnalysis;
   final TemporalAnalysis photoTimingAnalysis;
   final Duration correlationWindow;
-  
+
   const CorrelationReport({
     required this.asrEventCount,
     required this.ocrEventCount,
@@ -239,11 +243,11 @@ class CorrelationReport {
   double get asrCorrelationRate {
     return asrEventCount > 0 ? asrPhotoCorrelations / asrEventCount : 0.0;
   }
-  
+
   double get ocrCorrelationRate {
     return ocrEventCount > 0 ? ocrPhotoCorrelations / ocrEventCount : 0.0;
   }
-  
+
   double get overallCorrelationRate {
     final totalEvents = asrEventCount + ocrEventCount;
     final totalCorrelations = asrPhotoCorrelations + ocrPhotoCorrelations;
@@ -255,15 +259,15 @@ class CorrelationReport {
     final asrRate = (asrCorrelationRate * 100).toStringAsFixed(1);
     final ocrRate = (ocrCorrelationRate * 100).toStringAsFixed(1);
     final overallRate = (overallCorrelationRate * 100).toStringAsFixed(1);
-    
+
     return 'Correlation Report:\n'
-           '  ASR: $asrEventCount events, $asrPhotoCorrelations correlated ($asrRate%)\n'
-           '  OCR: $ocrEventCount events, $ocrPhotoCorrelations correlated ($ocrRate%)\n'
-           '  Photos: $photoCount available\n'
-           '  Overall: $overallRate% correlation rate\n'
-           '  Window: ${correlationWindow.inMilliseconds}ms\n'
-           '  ASR Timing: $asrTimingAnalysis\n'
-           '  OCR Timing: $ocrTimingAnalysis\n'
-           '  Photo Timing: $photoTimingAnalysis';
+        '  ASR: $asrEventCount events, $asrPhotoCorrelations correlated ($asrRate%)\n'
+        '  OCR: $ocrEventCount events, $ocrPhotoCorrelations correlated ($ocrRate%)\n'
+        '  Photos: $photoCount available\n'
+        '  Overall: $overallRate% correlation rate\n'
+        '  Window: ${correlationWindow.inMilliseconds}ms\n'
+        '  ASR Timing: $asrTimingAnalysis\n'
+        '  OCR Timing: $ocrTimingAnalysis\n'
+        '  Photo Timing: $photoTimingAnalysis';
   }
 }

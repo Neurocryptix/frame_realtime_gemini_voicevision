@@ -7,30 +7,31 @@ class AgentVectorService {
   final VectorDbService _vectorDbService;
   final void Function(String)? _logger;
   bool _isReady = false;
-  
+
   AgentVectorService({
     required VectorDbService vectorDbService,
     void Function(String)? logger,
-  }) : _vectorDbService = vectorDbService, _logger = logger;
+  })  : _vectorDbService = vectorDbService,
+        _logger = logger;
 
   /// Initialize the agent vector service
   Future<bool> initialize() async {
     try {
       _logger?.call('🔗 Initializing agent vector service...');
-      
+
       // The underlying VectorDbService should already be initialized by the main app
       // We just need to verify it's working
       final stats = await _vectorDbService.getStats();
-      
+
       if (stats.containsKey('error')) {
         _logger?.call('❌ Underlying vector DB has errors: ${stats['error']}');
         return false;
       }
-      
+
       _isReady = true;
       final totalDocs = stats['totalDocuments'] ?? 0;
       _logger?.call('✅ Agent vector service ready ($totalDocs existing docs)');
-      
+
       return true;
     } catch (e) {
       _logger?.call('❌ Agent vector service initialization failed: $e');
@@ -88,7 +89,8 @@ class AgentVectorService {
         threshold: threshold,
       );
 
-      _logger?.call('🔍 Retrieved ${results.length} memories for: ${_truncateContent(query)}');
+      _logger?.call(
+          '🔍 Retrieved ${results.length} memories for: ${_truncateContent(query)}');
       return results;
     } catch (e) {
       _logger?.call('❌ Failed to retrieve memory: $e');
@@ -207,10 +209,13 @@ class AgentVectorService {
 
       // Filter by output type if specified
       if (outputType != null) {
-        return results.where((result) {
-          final metadata = result['metadata'] as Map<String, String>?;
-          return metadata?['type'] == '${outputType}_output';
-        }).take(limit).toList();
+        return results
+            .where((result) {
+              final metadata = result['metadata'] as Map<String, String>?;
+              return metadata?['type'] == '${outputType}_output';
+            })
+            .take(limit)
+            .toList();
       }
 
       return results.take(limit).toList();
@@ -228,7 +233,7 @@ class AgentVectorService {
 
     try {
       final stats = await _vectorDbService.getStats();
-      
+
       // Count agent-specific entries
       final allDocs = await _vectorDbService.getAllDocuments();
       int agentDocs = 0;
@@ -239,7 +244,7 @@ class AgentVectorService {
       for (final doc in allDocs) {
         if (doc.metadata?.contains('agent_system') == true) {
           agentDocs++;
-          
+
           if (doc.metadata?.contains('asr_output') == true) asrDocs++;
           if (doc.metadata?.contains('ocr_output') == true) ocrDocs++;
           if (doc.metadata?.contains('llm_analysis') == true) llmDocs++;
@@ -266,7 +271,8 @@ class AgentVectorService {
     try {
       // Note: This is a simple implementation
       // A more sophisticated version would selectively remove only agent docs
-      _logger?.call('⚠️ Cannot selectively clear agent memories with current implementation');
+      _logger?.call(
+          '⚠️ Cannot selectively clear agent memories with current implementation');
       _logger?.call('Use main vector service clearAll() if needed');
     } catch (e) {
       _logger?.call('❌ Failed to clear memories: $e');
@@ -290,11 +296,11 @@ class AgentVectorService {
       );
 
       final filteredResults = <Map<String, Object?>>[];
-      
+
       for (final result in allResults) {
         final metadata = result['metadata'] as Map<String, String>?;
         final timestampStr = metadata?['timestamp'];
-        
+
         if (timestampStr != null) {
           try {
             final timestamp = DateTime.parse(timestampStr);
@@ -319,7 +325,7 @@ class AgentVectorService {
 
       final limitedResults = filteredResults.take(limit).toList();
       _logger?.call('🕐 Found ${limitedResults.length} memories in time range');
-      
+
       return limitedResults;
     } catch (e) {
       _logger?.call('❌ Failed to search by time range: $e');

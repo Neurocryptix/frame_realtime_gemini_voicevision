@@ -9,27 +9,28 @@ import '../models/agent_output.dart';
 class ASRService {
   final void Function(String)? _logger;
   bool _isReady = false;
-  
+
   // Real ASR engine (completely separate from Gemini pipeline)
   late SpeechToText _speechToText;
   bool _speechEnabled = false;
-  
+
   // ASR configuration
   static const int sampleRate = 16000; // Expected sample rate
-  static const int minAudioLength = 1600; // Minimum audio length (100ms at 16kHz)
+  static const int minAudioLength =
+      1600; // Minimum audio length (100ms at 16kHz)
   static const double silenceThreshold = 0.01; // Voice activity threshold
-  
+
   // Audio buffer for real-time processing (agent-only, doesn't affect main stream)
   final List<int> _audioBuffer = [];
   Timer? _processingTimer;
-  
+
   ASRService({void Function(String)? logger}) : _logger = logger;
 
   /// Initialize the real ASR service (SEPARATE from Gemini pipeline)
   Future<bool> initialize() async {
     try {
       _logger?.call('🎤 Initializing REAL ASR service (agent-only)...');
-      
+
       // Initialize speech_to_text (completely independent from Gemini)
       _speechToText = SpeechToText();
       _speechEnabled = await _speechToText.initialize(
@@ -40,15 +41,16 @@ class ASRService {
           _logger?.call('📊 Agent ASR status: $status');
         },
       );
-      
+
       if (_speechEnabled) {
         _isReady = true;
-        _logger?.call('✅ REAL ASR service initialized (agent-only, non-blocking)');
-        
+        _logger
+            ?.call('✅ REAL ASR service initialized (agent-only, non-blocking)');
+
         // Log available locales
         final locales = await _speechToText.locales();
         _logger?.call('🌍 ASR locales available: ${locales.length}');
-        
+
         return true;
       } else {
         _logger?.call('⚠️ ASR not available, falling back to mock');
@@ -57,7 +59,6 @@ class ASRService {
         _isReady = true;
         return true;
       }
-      
     } catch (e) {
       _logger?.call('❌ Real ASR initialization failed, using mock: $e');
       // Graceful fallback to mock
@@ -94,12 +95,13 @@ class ASRService {
       } else {
         result = await _mockTranscription(audioData);
       }
-      
+
       if (result != null) {
         final source = _speechEnabled ? "REAL" : "MOCK";
-        _logger?.call('🎤 Agent ASR ($source): "${result.text}" (${result.confidence.toStringAsFixed(2)})');
+        _logger?.call(
+            '🎤 Agent ASR ($source): "${result.text}" (${result.confidence.toStringAsFixed(2)})');
       }
-      
+
       return result;
     } catch (e) {
       _logger?.call('❌ Agent ASR transcription error: $e');
@@ -111,10 +113,9 @@ class ASRService {
   /// Real-time transcription using speech_to_text (SEPARATE from Gemini pipeline)
   Future<ASRResult?> _realTimeTranscription(Uint8List audioData) async {
     try {
-      
       // Add audio to buffer for processing (doesn't interfere with main stream)
       _audioBuffer.addAll(audioData);
-      
+
       // Use a timer to batch process audio chunks (non-blocking)
       _processingTimer?.cancel();
       _processingTimer = Timer(const Duration(milliseconds: 500), () async {
@@ -128,10 +129,9 @@ class ASRService {
           }
         }
       });
-      
+
       // Return mock result for now (real implementation would need significant refactoring)
       return await _mockTranscription(audioData);
-      
     } catch (e) {
       _logger?.call('❌ Real-time transcription error: $e');
       return null;
@@ -144,16 +144,16 @@ class ASRService {
 
     // Convert bytes to 16-bit samples
     final samples = Int16List.view(audioData.buffer);
-    
+
     // Calculate RMS (Root Mean Square) energy
     double sum = 0.0;
     for (final sample in samples) {
       sum += sample * sample;
     }
-    
+
     final rms = sum / samples.length.toDouble();
     final normalizedRms = rms / (32768.0 * 32768.0); // Normalize to 0-1 range
-    
+
     return normalizedRms > silenceThreshold;
   }
 
@@ -162,15 +162,15 @@ class ASRService {
     // Simulate processing time based on audio length
     final processingMs = 50 + (audioData.length ~/ 1000);
     await Future.delayed(Duration(milliseconds: processingMs));
-    
+
     // Calculate mock confidence based on audio characteristics
     final confidence = _calculateMockConfidence(audioData);
-    
+
     // Generate mock transcription based on audio characteristics
     final transcription = _generateMockTranscription(audioData, confidence);
-    
+
     if (transcription.isEmpty) return null;
-    
+
     return ASRResult(
       text: transcription,
       confidence: confidence,
@@ -188,11 +188,11 @@ class ASRService {
     if (audioData.length < 2) return 0.0;
 
     final samples = Int16List.view(audioData.buffer);
-    
+
     // Calculate audio characteristics
     double sum = 0.0;
     double maxAmplitude = 0.0;
-    
+
     for (final sample in samples) {
       final amplitude = sample.abs().toDouble();
       sum += amplitude;
@@ -200,26 +200,27 @@ class ASRService {
         maxAmplitude = amplitude;
       }
     }
-    
+
     final averageAmplitude = sum / samples.length.toDouble();
     final normalizedMax = maxAmplitude / 32768.0;
     final normalizedAvg = averageAmplitude / 32768.0;
-    
+
     // Mock confidence calculation
     double confidence = 0.3; // Base confidence
-    
+
     // Higher amplitude generally means clearer speech
     if (normalizedMax > 0.1) confidence += 0.2;
     if (normalizedAvg > 0.05) confidence += 0.2;
-    
+
     // Longer audio generally has better recognition
     if (audioData.length > 8000) confidence += 0.1; // >500ms
     if (audioData.length > 16000) confidence += 0.1; // >1s
-    
+
     // Add some randomness to simulate real-world variance
-    final randomFactor = (DateTime.now().millisecondsSinceEpoch % 100) / 500.0 - 0.1;
+    final randomFactor =
+        (DateTime.now().millisecondsSinceEpoch % 100) / 500.0 - 0.1;
     confidence += randomFactor;
-    
+
     return confidence.clamp(0.0, 1.0);
   }
 
@@ -236,7 +237,7 @@ class ASRService {
       "I need help with this task",
       "Can you see what I'm looking at?",
     ];
-    
+
     final mediumConfidenceTexts = [
       "Hello there",
       "What is this",
@@ -247,7 +248,7 @@ class ASRService {
       "I can see",
       "Working well",
     ];
-    
+
     final lowConfidenceTexts = [
       "Hello",
       "Yes",
@@ -258,7 +259,7 @@ class ASRService {
       "See",
       "Work",
     ];
-    
+
     List<String> candidateTexts;
     if (confidence > 0.7) {
       candidateTexts = highConfidenceTexts;
@@ -269,16 +270,17 @@ class ASRService {
     } else {
       return ''; // Too low confidence
     }
-    
+
     // Select text based on audio characteristics
-    final index = (audioData.length + DateTime.now().millisecond) % candidateTexts.length;
+    final index =
+        (audioData.length + DateTime.now().millisecond) % candidateTexts.length;
     return candidateTexts[index];
   }
 
   /// Process continuous audio stream (for streaming recognition)
   Stream<ASRResult> processAudioStream(Stream<Uint8List> audioStream) async* {
     if (!_isReady) return;
-    
+
     await for (final audioChunk in audioStream) {
       final result = await transcribeAudio(audioChunk);
       if (result != null) {
@@ -328,7 +330,7 @@ class ASRService {
   void dispose() {
     _processingTimer?.cancel();
     _audioBuffer.clear();
-    
+
     if (_speechEnabled) {
       try {
         _speechToText.stop();
@@ -336,7 +338,7 @@ class ASRService {
         _logger?.call('⚠️ ASR stop error: $e');
       }
     }
-    
+
     _isReady = false;
     _speechEnabled = false;
     _logger?.call('🧹 Real ASR service disposed (agent-only)');

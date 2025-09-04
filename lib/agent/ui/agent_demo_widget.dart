@@ -6,7 +6,7 @@ import '../models/agent_output.dart';
 /// Provides controls and displays for testing agent features
 class AgentDemoWidget extends StatefulWidget {
   final AgentCore? agentCore;
-  
+
   const AgentDemoWidget({
     super.key,
     this.agentCore,
@@ -20,7 +20,7 @@ class _AgentDemoWidgetState extends State<AgentDemoWidget> {
   bool _isAgentEnabled = false;
   List<AgentOutput> _recentOutputs = [];
   Map<String, dynamic>? _agentStatus;
-  
+
   @override
   void initState() {
     super.initState();
@@ -39,7 +39,7 @@ class _AgentDemoWidgetState extends State<AgentDemoWidget> {
 
   Future<void> _toggleAgent() async {
     if (widget.agentCore == null) return;
-    
+
     if (_isAgentEnabled) {
       await widget.agentCore!.disable();
     } else {
@@ -52,7 +52,7 @@ class _AgentDemoWidgetState extends State<AgentDemoWidget> {
         ),
       );
     }
-    
+
     _updateStatus();
   }
 
@@ -141,7 +141,9 @@ class _AgentDemoWidgetState extends State<AgentDemoWidget> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: _isAgentEnabled ? Colors.green.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1),
+            color: _isAgentEnabled
+                ? Colors.green.withValues(alpha: 0.1)
+                : Colors.grey.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: _isAgentEnabled ? Colors.green : Colors.grey,
@@ -172,8 +174,8 @@ class _AgentDemoWidgetState extends State<AgentDemoWidget> {
                 icon: Icon(_isAgentEnabled ? Icons.stop : Icons.play_arrow),
                 label: Text(_isAgentEnabled ? 'Disable Agent' : 'Enable Agent'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _isAgentEnabled 
-                      ? Colors.red.withValues(alpha: 0.1) 
+                  backgroundColor: _isAgentEnabled
+                      ? Colors.red.withValues(alpha: 0.1)
                       : Colors.green.withValues(alpha: 0.1),
                 ),
               ),
@@ -216,7 +218,7 @@ class _AgentDemoWidgetState extends State<AgentDemoWidget> {
     }
 
     final services = _agentStatus!['services'] as Map<String, dynamic>? ?? {};
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12.0),
@@ -229,14 +231,16 @@ class _AgentDemoWidgetState extends State<AgentDemoWidget> {
             ),
             const SizedBox(height: 8),
             _buildStatusRow('Enabled', _agentStatus!['isEnabled'] ?? false),
-            _buildStatusRow('Processing', _agentStatus!['isProcessing'] ?? false),
+            _buildStatusRow(
+                'Processing', _agentStatus!['isProcessing'] ?? false),
             const SizedBox(height: 8),
             Text('Total Outputs: ${_agentStatus!['totalOutputs'] ?? 0}'),
             Text('ASR Outputs: ${_agentStatus!['asrOutputs'] ?? 0}'),
             Text('OCR Outputs: ${_agentStatus!['ocrOutputs'] ?? 0}'),
             Text('LLM Calls: ${_agentStatus!['llmCalls'] ?? 0}'),
             const SizedBox(height: 8),
-            const Text('Services:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('Services:',
+                style: TextStyle(fontWeight: FontWeight.bold)),
             _buildStatusRow('ASR', services['asr'] ?? false),
             _buildStatusRow('OCR', services['ocr'] ?? false),
             _buildStatusRow('LLM', services['llm'] ?? false),
@@ -308,9 +312,9 @@ class _AgentDemoWidgetState extends State<AgentDemoWidget> {
   Widget _buildOutputItem(AgentOutput output) {
     final typeIcon = _getTypeIcon(output.type);
     final timeStr = '${output.timestamp.hour.toString().padLeft(2, '0')}:'
-                   '${output.timestamp.minute.toString().padLeft(2, '0')}:'
-                   '${output.timestamp.second.toString().padLeft(2, '0')}';
-    
+        '${output.timestamp.minute.toString().padLeft(2, '0')}:'
+        '${output.timestamp.second.toString().padLeft(2, '0')}';
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       padding: const EdgeInsets.all(8),

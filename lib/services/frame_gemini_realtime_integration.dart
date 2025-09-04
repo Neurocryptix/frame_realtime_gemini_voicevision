@@ -18,37 +18,37 @@ class FrameGeminiRealtimeIntegration {
   // ignore: unused_field
   final BrilliantDevice? _frameDevice;
   final void Function(String) _logger;
-  
+
   // Integration state
   bool _isActive = false;
   bool _isListening = false;
   final bool _isProcessing = false;
-  
+
   // Audio processing
   final List<Uint8List> _audioBuffer = [];
   int _bufferSizeBytes = 0;
   static const int _maxBufferSize = 64000; // 4 seconds at 16kHz
-  
+
   // Voice activity detection
   bool _isVoiceActive = false;
   Timer? _silenceTimer;
   static const Duration _silenceThreshold = Duration(milliseconds: 1000);
-  
+
   // Audio conversion constants
   static const int _targetBitDepth = 16; // Gemini expects 16-bit PCM
-  
+
   // Subscriptions
   StreamSubscription<Uint8List>? _audioSubscription;
   StreamSubscription<String>? _frameLogSubscription;
-  
+
   // Audio playback
   bool _isPlayingAudio = false;
   bool _isAudioSetup = false;
-  
+
   // Photo capture
   Uint8List? _lastCapturedPhoto;
   bool _isWaitingForPhoto = false;
-  
+
   // Statistics
   int _totalAudioPackets = 0;
   int _totalResponsesReceived = 0;
@@ -60,43 +60,43 @@ class FrameGeminiRealtimeIntegration {
     required BrilliantDevice? frameDevice,
     VectorDbService? vectorDb,
     required void Function(String) logger,
-  }) : _frameAudioService = frameAudioService,
-       _geminiRealtime = geminiRealtime,
-       _frameDevice = frameDevice,
-       _vectorDb = vectorDb,
-       _logger = logger;
+  })  : _frameAudioService = frameAudioService,
+        _geminiRealtime = geminiRealtime,
+        _frameDevice = frameDevice,
+        _vectorDb = vectorDb,
+        _logger = logger;
 
   /// Simplified integration initialization
   Future<bool> initialize() async {
     try {
       _logger('🔧 Initializing Frame-Gemini integration (simplified)...');
-      
+
       // Initialize PCM audio player with basic error handling
       try {
         const sampleRate = 24000; // Gemini responses are 24kHz
         await FlutterPcmSound.setup(
           sampleRate: sampleRate,
-          channelCount: 1,   // Mono audio
+          channelCount: 1, // Mono audio
         );
         // Use same feed threshold calculation as main app for consistency
-        FlutterPcmSound.setFeedThreshold(sampleRate ~/ 30); // 800 frames = ~33ms buffer
+        FlutterPcmSound.setFeedThreshold(
+            sampleRate ~/ 30); // 800 frames = ~33ms buffer
         _isAudioSetup = true;
         _logger('✅ Audio player ready');
       } catch (e) {
         _logger('⚠️ Audio player setup warning: $e');
         // Continue without audio player if needed
       }
-      
+
       // Subscribe to Frame audio service logs
       try {
         _frameLogSubscription = _frameAudioService.logStream.listen(_logger);
       } catch (e) {
         _logger('⚠️ Log subscription warning: $e');
       }
-      
+
       _logger('✅ Frame-Gemini integration ready');
       return true;
-      
     } catch (e) {
       _logger('❌ Integration initialization failed: $e');
       return false; // Don't throw, allow app to continue
@@ -107,7 +107,8 @@ class FrameGeminiRealtimeIntegration {
   Future<bool> startSession({
     required String geminiApiKey,
     required gemini_realtime.GeminiVoiceName voice,
-    String systemInstruction = 'You are a helpful AI assistant integrated with Frame smart glasses. Keep responses concise and conversational.',
+    String systemInstruction =
+        'You are a helpful AI assistant integrated with Frame smart glasses. Keep responses concise and conversational.',
   }) async {
     if (_isActive) {
       _logger('⚠️ Session already active');
@@ -117,54 +118,53 @@ class FrameGeminiRealtimeIntegration {
     try {
       _logger('🚀 Starting Frame-Gemini realtime session...');
       _sessionStartTime = DateTime.now();
-      
+
       // Display connection attempt on Frame
       await _displayOnFrame('🔗 Connecting to Gemini...');
-      
+
       // Connect to Gemini Realtime API
       final geminiConnected = await _geminiRealtime.connect(
         geminiApiKey,
         voice,
         systemInstruction,
       );
-      
+
       if (!geminiConnected) {
         _logger('❌ Failed to connect to Gemini Realtime');
         await _displayOnFrame('❌ Gemini connection failed');
         await Future.delayed(const Duration(seconds: 2));
         return false;
       }
-      
+
       // Visual confirmation of successful Gemini connection
       await _displayOnFrame('✅ Gemini connected!');
       await Future.delayed(const Duration(seconds: 1));
-      
+
       // Start Frame audio streaming with official Brilliant Labs parameters
       final audioStarted = await _frameAudioService.startStreaming(
         sampleRate: 8000, // Frame native sample rate (official spec)
-        bitDepth: 16,     // Frame native bit depth (16-bit PCM, using high 10 bits)
+        bitDepth: 16, // Frame native bit depth (16-bit PCM, using high 10 bits)
       );
-      
+
       if (!audioStarted) {
         _logger('❌ Failed to start Frame audio streaming');
         await _geminiRealtime.disconnect();
         return false;
       }
-      
+
       // Set up audio stream processing
       _setupAudioStreaming();
-      
+
       // Set up Gemini response handling
       _setupResponseHandling();
-      
+
       // Display session start on Frame
       await _displayOnFrame('🎤 Voice session active');
-      
+
       _isActive = true;
       _isListening = true;
       _logger('✅ Realtime session started successfully');
       return true;
-      
     } catch (e) {
       _logger('❌ Failed to start session: $e');
       await stopSession();
@@ -189,29 +189,29 @@ class FrameGeminiRealtimeIntegration {
   /// Process audio data from Frame
   void _processFrameAudio(Uint8List audioData) {
     if (!_isActive || !_isListening) return;
-    
+
     _totalAudioPackets++;
-    
+
     // Convert audio format if needed
     final convertedAudio = _convertAudioFormat(audioData);
-    
+
     // Add to buffer for voice activity detection
     _audioBuffer.add(convertedAudio);
     _bufferSizeBytes += convertedAudio.length;
-    
+
     // Detect voice activity
     final hasVoice = FrameAudioProcessor.detectVoiceActivity(
-      convertedAudio, 
+      convertedAudio,
       _targetBitDepth,
       threshold: 0.015, // Slightly higher threshold for better detection
     );
-    
+
     if (hasVoice) {
       _handleVoiceDetected(convertedAudio);
     } else {
       _handleSilence();
     }
-    
+
     // Prevent buffer overflow
     if (_bufferSizeBytes > _maxBufferSize) {
       _trimBuffer();
@@ -236,17 +236,17 @@ class FrameGeminiRealtimeIntegration {
     if (!_isVoiceActive) {
       _isVoiceActive = true;
       _logger('🗣️ Voice detected - streaming to Gemini');
-      
+
       // Stop any current audio playback
       if (_isPlayingAudio) {
         _stopAudioPlayback();
       }
     }
-    
+
     // Cancel silence timer
     _silenceTimer?.cancel();
     _silenceTimer = null;
-    
+
     // Send audio directly to Gemini Realtime
     _sendAudioToGemini(audioData);
   }
@@ -258,7 +258,7 @@ class FrameGeminiRealtimeIntegration {
       _silenceTimer = Timer(_silenceThreshold, () {
         _isVoiceActive = false;
         _logger('🤫 Voice ended - processing complete');
-        
+
         // Add conversation to vector DB if available
         _addConversationToVectorDb();
       });
@@ -277,12 +277,13 @@ class FrameGeminiRealtimeIntegration {
   /// Add conversation context to vector database
   Future<void> _addConversationToVectorDb() async {
     if (_vectorDb == null) return;
-    
+
     try {
       // Create a conversation summary for the vector DB
       final timestamp = DateTime.now().toIso8601String();
-      const conversationSummary = 'User spoke to Frame assistant'; // This could be enhanced with actual transcription
-      
+      const conversationSummary =
+          'User spoke to Frame assistant'; // This could be enhanced with actual transcription
+
       await _vectorDb.addTextWithEmbedding(
         content: conversationSummary,
         metadata: {
@@ -303,7 +304,7 @@ class FrameGeminiRealtimeIntegration {
         timer.cancel();
         return;
       }
-      
+
       try {
         _checkForAudioResponse();
       } catch (e) {
@@ -315,27 +316,26 @@ class FrameGeminiRealtimeIntegration {
   /// Handle audio data received directly from Frame (official protocol)
   void handleFrameAudio(Uint8List audioData) {
     if (!_isActive) return;
-    
+
     // Process Frame audio data (8kHz) and send to Gemini
     try {
       // Upsample Frame audio from 8kHz to 16kHz for Gemini
       final upsampledAudio = AudioUpsampler.upsample8kTo16k(audioData);
-      
+
       // Send upsampled audio to Gemini realtime service only if connected
       if (_geminiRealtime.isConnected()) {
         _geminiRealtime.sendAudio(upsampledAudio);
       }
-      
+
       // Update voice activity detection
       _isVoiceActive = true;
-      
+
       // Reset silence timer
       _silenceTimer?.cancel();
       _silenceTimer = Timer(_silenceThreshold, () {
         _isVoiceActive = false;
         _logger('🤫 Voice activity ended');
       });
-      
     } catch (e) {
       _logger('❌ Frame audio processing error: $e');
     }
@@ -343,7 +343,9 @@ class FrameGeminiRealtimeIntegration {
 
   /// Check for and play audio responses from Gemini
   void _checkForAudioResponse() {
-    if (_geminiRealtime.hasResponseAudio() && !_isPlayingAudio && !_isVoiceActive) {
+    if (_geminiRealtime.hasResponseAudio() &&
+        !_isPlayingAudio &&
+        !_isVoiceActive) {
       _playGeminiResponse();
     }
   }
@@ -351,25 +353,26 @@ class FrameGeminiRealtimeIntegration {
   /// Play audio response from Gemini
   Future<void> _playGeminiResponse() async {
     if (_isPlayingAudio || !_isAudioSetup) return;
-    
+
     try {
       _isPlayingAudio = true;
       _totalResponsesReceived++;
       _logger('🔊 Playing Gemini response');
-      
+
       // Capture photo when Gemini pipeline engages (first response of the session)
       if (_totalResponsesReceived == 1) {
         _logger('📸 First Gemini response - capturing context photo');
         // Don't await to avoid blocking audio playback
-        captureAndSendPhoto().catchError((e) => _logger('⚠️ Context photo error: $e'));
+        captureAndSendPhoto()
+            .catchError((e) => _logger('⚠️ Context photo error: $e'));
       }
-      
+
       // Display response indicator on Frame
       await _displayOnFrame('🤖 AI responding...');
-      
+
       // Get audio data from Gemini
       final responseAudio = _geminiRealtime.getResponseAudioByteData();
-      
+
       if (responseAudio.lengthInBytes > 0) {
         // Convert ByteData to Int16 list for flutter_pcm_sound
         final audioSamples = <int>[];
@@ -377,22 +380,21 @@ class FrameGeminiRealtimeIntegration {
           final sample = responseAudio.getInt16(i, Endian.little);
           audioSamples.add(sample);
         }
-        
+
         // Play audio through phone speaker using flutter_pcm_sound
         if (audioSamples.isNotEmpty) {
           FlutterPcmSound.start();
           await FlutterPcmSound.feed(PcmArrayInt16.fromList(audioSamples));
-          
+
           // Wait for playback to complete
           await Future.delayed(Duration(
             milliseconds: (audioSamples.length / 24000 * 1000).round(),
           ));
         }
       }
-      
+
       // Clear response indicator
       await _displayOnFrame('🎤 Listening...');
-      
     } catch (e) {
       _logger('❌ Audio playback error: $e');
     } finally {
@@ -428,20 +430,20 @@ class FrameGeminiRealtimeIntegration {
       _sendLastPhotoToGemini();
     }
   }
-  
+
   /// Send the last captured photo to Gemini
   void _sendLastPhotoToGemini() {
     if (_lastCapturedPhoto != null && _lastCapturedPhoto!.isNotEmpty) {
       _logger('📸 Sending captured photo to Gemini...');
       _geminiRealtime.sendPhoto(_lastCapturedPhoto!);
-      
+
       // Visual feedback
       _displayOnFrame('✅ Photo sent!').then((_) {
         Future.delayed(const Duration(seconds: 2), () {
           _displayOnFrame('🎤 Listening...');
         });
       });
-      
+
       // Add photo context to vector DB
       if (_vectorDb != null) {
         _vectorDb.addTextWithEmbedding(
@@ -463,36 +465,35 @@ class FrameGeminiRealtimeIntegration {
       await _displayOnFrame('⚠️ Session not active');
       return;
     }
-    
+
     try {
       _logger('📸 Capturing photo from Frame...');
       await _displayOnFrame('📸 Capturing photo...');
-      
+
       // If we already have a recent photo, send it directly
       if (_lastCapturedPhoto != null) {
         _sendLastPhotoToGemini();
         return;
       }
-      
+
       // Request new photo capture
       _isWaitingForPhoto = true;
       await _captureFramePhoto();
-      
+
       // Wait briefly for photo to arrive
       await Future.delayed(const Duration(seconds: 3));
-      
+
       if (!_isWaitingForPhoto) {
         // Photo was received and sent
         return;
       }
-      
+
       // Timeout - photo didn't arrive
       _isWaitingForPhoto = false;
       _logger('❌ Photo capture timeout');
       await _displayOnFrame('❌ Photo timeout');
       await Future.delayed(const Duration(seconds: 2));
       await _displayOnFrame('🎤 Listening...');
-      
     } catch (e) {
       _isWaitingForPhoto = false;
       _logger('❌ Failed to capture/send photo: $e');
@@ -501,17 +502,19 @@ class FrameGeminiRealtimeIntegration {
       await _displayOnFrame('🎤 Listening...');
     }
   }
-  
+
   /// Capture photo from Frame camera
   Future<Uint8List?> _captureFramePhoto() async {
     try {
       // Request photo capture from Frame using sendMessage
       if (_frameDevice != null) {
         // Use TxCaptureSettings to request a photo
-        await _frameDevice.sendMessage(0x0d, TxCaptureSettings(
-          qualityIndex: 75, // Good quality
-        ).pack());
-        
+        await _frameDevice.sendMessage(
+            0x0d,
+            TxCaptureSettings(
+              qualityIndex: 75, // Good quality
+            ).pack());
+
         // Note: Photo data will be received via dataResponse stream
         // The actual photo handling is done in the main app's _handlePhotoReceived method
         return null; // Photo will be received asynchronously
@@ -529,11 +532,11 @@ class FrameGeminiRealtimeIntegration {
       _logger('⚠️ Cannot send photo - session not active');
       return;
     }
-    
+
     try {
       _logger('📸 Sending photo to Gemini...');
       _geminiRealtime.sendPhoto(jpegPhoto);
-      
+
       // Add photo context to vector DB
       if (_vectorDb != null) {
         await _vectorDb.addTextWithEmbedding(
@@ -562,40 +565,40 @@ class FrameGeminiRealtimeIntegration {
   /// Stop the voice conversation session
   Future<void> stopSession() async {
     if (!_isActive) return;
-    
+
     try {
       _logger('⏹️ Stopping realtime session...');
-      
+
       _isActive = false;
       _isListening = false;
-      
+
       // Stop timers
       _silenceTimer?.cancel();
-      
+
       // Stop audio streaming with error handling
       try {
         await _frameAudioService.stopStreaming();
       } catch (e) {
         _logger('⚠️ Audio stop error: $e');
       }
-      
+
       // Stop audio playback
       _stopAudioPlayback();
-      
+
       // Disconnect from Gemini with error handling
       try {
         await _geminiRealtime.disconnect();
       } catch (e) {
         _logger('⚠️ Gemini disconnect error: $e');
       }
-      
+
       // Cancel subscriptions
       await _audioSubscription?.cancel();
-      
+
       // Clear buffers
       _audioBuffer.clear();
       _bufferSizeBytes = 0;
-      
+
       // Display session end on Frame
       try {
         await _displayOnFrame('Session ended');
@@ -604,15 +607,15 @@ class FrameGeminiRealtimeIntegration {
       } catch (e) {
         _logger('⚠️ Frame display error: $e');
       }
-      
+
       // Log session statistics
       if (_sessionStartTime != null) {
         final duration = DateTime.now().difference(_sessionStartTime!);
-        _logger('📊 Session stats: ${duration.inSeconds}s, $_totalAudioPackets audio packets, $_totalResponsesReceived responses');
+        _logger(
+            '📊 Session stats: ${duration.inSeconds}s, $_totalAudioPackets audio packets, $_totalResponsesReceived responses');
       }
-      
+
       _logger('✅ Realtime session stopped');
-      
     } catch (e) {
       _logger('❌ Error stopping session: $e');
       // Force cleanup even if there are errors
@@ -637,17 +640,17 @@ class FrameGeminiRealtimeIntegration {
 
   /// Get current session status
   Map<String, dynamic> get status => {
-    'isActive': _isActive,
-    'isListening': _isListening,
-    'isProcessing': _isProcessing,
-    'isVoiceActive': _isVoiceActive,
-    'isPlayingAudio': _isPlayingAudio,
-    'totalAudioPackets': _totalAudioPackets,
-    'totalResponses': _totalResponsesReceived,
-    'bufferSize': _bufferSizeBytes,
-    'geminiConnected': _geminiRealtime.isConnected(),
-    'frameAudioActive': _frameAudioService.isStreaming,
-  };
+        'isActive': _isActive,
+        'isListening': _isListening,
+        'isProcessing': _isProcessing,
+        'isVoiceActive': _isVoiceActive,
+        'isPlayingAudio': _isPlayingAudio,
+        'totalAudioPackets': _totalAudioPackets,
+        'totalResponses': _totalResponsesReceived,
+        'bufferSize': _bufferSizeBytes,
+        'geminiConnected': _geminiRealtime.isConnected(),
+        'frameAudioActive': _frameAudioService.isStreaming,
+      };
 
   /// Dispose resources
   void dispose() {
