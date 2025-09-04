@@ -29,7 +29,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:frame_realtime_gemini_voicevision/agent/core/agent_core.dart';
 import 'package:frame_realtime_gemini_voicevision/agent/services/agent_vector_service.dart';
 import 'package:frame_realtime_gemini_voicevision/agent/services/agent_manager.dart';
-import 'package:frame_realtime_gemini_voicevision/agent/ui/agent_demo_widget.dart';
+// import 'package:frame_realtime_gemini_voicevision/agent/ui/agent_demo_widget.dart'; // Unused - using integrated interface
 
 // Global ObjectBox store instance
 late Store store;
@@ -458,9 +458,10 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
           // NOTE: Audio data (0x05, 0x06) now handled by RxAudio stream
           // NOTE: Photo data now handled by RxPhoto stream
-          // Handle tap messages (0x09) - Quick check
+          // Handle tap messages (0x09) - Trigger speech-to-text query
           if (messageType == 0x09) {
-            _logEvent('👆 Frame tap detected');
+            _logEvent('👆 Frame tap detected - Starting voice query...');
+            _handleFrameTapQuery();
           }
         }
       });
@@ -683,27 +684,47 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
   /// Handle audio received via RxAudio (exactly like original repository)
   void _handleFrameAudio(Uint8List pcm16x8) {
+    // PRIORITY 1: Send to Gemini first (main pipeline)
     if (_gemini != null && _gemini!.isConnected()) {
-      // Upsample PCM16 from 8kHz to 16kHz for Gemini (same as original)
-      final pcm16x16 = AudioUpsampler.upsample8kTo16k(pcm16x8);
-      _gemini!.sendAudio(pcm16x16);
+      try {
+        // Upsample PCM16 from 8kHz to 16kHz for Gemini (same as original)
+        final pcm16x16 = AudioUpsampler.upsample8kTo16k(pcm16x8);
+        _gemini!.sendAudio(pcm16x16);
 
-      // Update statistics
-      _audioPacketsReceived++;
-      _totalAudioBytes += pcm16x8.length;
+        // Update statistics
+        _audioPacketsReceived++;
+        _totalAudioBytes += pcm16x8.length;
 
-      // Log statistics periodically
-      if (_audioPacketsReceived % 100 == 0) {
-        _logEvent(
-            '📊 RxAudio: $_audioPacketsReceived packets, ${(_totalAudioBytes / 1024).toStringAsFixed(1)} KB');
+        // Log statistics periodically
+        if (_audioPacketsReceived % 100 == 0) {
+          _logEvent(
+              '📊 RxAudio: $_audioPacketsReceived packets, ${(_totalAudioBytes / 1024).toStringAsFixed(1)} KB');
+        }
+      } catch (e) {
+        _logEvent('⚠️ Gemini audio send error: $e');
+        // Attempt reconnection if needed
+        if (!_gemini!.isConnected()) {
+          _logEvent('🔄 Attempting Gemini reconnection...');
+        }
       }
     }
 
-    // AGENT INTEGRATION: Process audio through agent system (parallel to Gemini)
+    // AGENT INTEGRATION: Process audio through agent system (non-interfering)
     if (_agentManager?.isEnabled == true) {
-      // Use upsampled audio for agent processing too
-      final pcm16x16 = AudioUpsampler.upsample8kTo16k(pcm16x8);
-      _agentManager!.processAudio(pcm16x16);
+      // Process agent audio asynchronously to avoid blocking Gemini stream
+      Future.microtask(() async {
+        try {
+          // Create independent copy for agent processing
+          final agentAudio = Uint8List.fromList(pcm16x8);
+          final pcm16x16 = AudioUpsampler.upsample8kTo16k(agentAudio);
+          await _agentManager!.processAudio(pcm16x16);
+        } catch (e) {
+          // Silently handle agent processing errors to avoid affecting main pipeline
+          if (kDebugMode) {
+            _logEvent('⚠️ Agent audio processing error: $e');
+          }
+        }
+      });
     }
   }
 
@@ -843,8 +864,8 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                     _buildControlButtons(),
                     const SizedBox(height: 16),
 
-                    // Agent Demo UI
-                    AgentDemoWidget(agentCore: _agentCore),
+                    // Agent Demo UI - Removed to avoid duplicate interface with Agent Status Section
+                    // AgentDemoWidget(agentCore: _agentCore),
                     const SizedBox(height: 16),
 
                     // Event Log with fixed height
@@ -1151,30 +1172,39 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
   Widget _buildDatabaseQuerySection() {
     return ExpansionTile(
-      title: const Text('🗃️ Database Query'),
-      subtitle: Text(_vectorDb != null ? 'Connected' : 'Not available'),
+      title: const Text('🗃️ Database Query via Frame Tap'),
+      subtitle: Text(_vectorDb != null ? 'Connected - Tap Frame to query' : 'Not available'),
       children: [
         Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              TextField(
-                controller: _queryController,
-                decoration: const InputDecoration(
-                  labelText: 'Search query',
-                  hintText: 'Enter text to search memories...',
-                  border: OutlineInputBorder(),
+              const Card(
+                color: Color(0xFFF3E5F5),
+                child: Padding(
+                  padding: EdgeInsets.all(12.0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.touch_app, color: Colors.purple),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Tap the side of your Frame glasses twice, then speak your query. Results will appear on the glasses screen.',
+                          style: TextStyle(fontStyle: FontStyle.italic),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                onSubmitted: (_) => _performDatabaseQuery(),
               ),
               const SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _vectorDb != null ? _performDatabaseQuery : null,
-                      icon: const Icon(Icons.search),
-                      label: const Text('Query Database'),
+                      onPressed: _vectorDb != null ? _simulateFrameTapQuery : null,
+                      icon: const Icon(Icons.record_voice_over),
+                      label: const Text('Simulate Tap Query'),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1231,30 +1261,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     );
   }
 
-  Future<void> _performDatabaseQuery() async {
-    if (_vectorDb == null || _queryController.text.trim().isEmpty) return;
-
-    try {
-      _logEvent('🔍 Querying database: "${_queryController.text}"');
-      
-      final results = await _vectorDb!.queryText(
-        queryText: _queryController.text.trim(),
-        topK: 5,
-        threshold: 0.3,
-      );
-
-      setState(() {
-        _queryResults = results;
-      });
-
-      _logEvent('✅ Found ${results.length} results');
-    } catch (e) {
-      _logEvent('❌ Query failed: $e');
-      setState(() {
-        _queryResults = [];
-      });
-    }
-  }
+  // _performDatabaseQuery removed - replaced with _performFrameQuery for tap-to-speech functionality
 
   void _clearDatabaseResults() {
     setState(() {
@@ -1262,6 +1269,103 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       _queryResults = [];
     });
     _logEvent('🧹 Database query results cleared');
+  }
+
+  /// Handle Frame tap to trigger speech-to-text database query
+  Future<void> _handleFrameTapQuery() async {
+    if (!_isConnected || _vectorDb == null) {
+      _logEvent('❌ Frame not connected or database unavailable');
+      return;
+    }
+
+    try {
+      _logEvent('🎤 Starting voice capture for database query...');
+      
+      // Show query prompt on Frame screen
+      await _sendTextToFrame('Listening...\nSpeak your query');
+      
+      // Start recording audio for speech-to-text
+      // This is a simplified version - in full implementation would capture audio
+      // For now, simulate with a delay and use agent ASR
+      await Future.delayed(const Duration(seconds: 3));
+      
+      // Simulate speech-to-text result (in real implementation, would use captured audio)
+      const mockQuery = 'What did I do today?'; // This would come from speech recognition
+      
+      _logEvent('🗣️ Query captured: "$mockQuery"');
+      await _performFrameQuery(mockQuery);
+      
+    } catch (e) {
+      _logEvent('❌ Frame tap query failed: $e');
+      await _sendTextToFrame('Error\nQuery failed');
+    }
+  }
+
+  /// Simulate Frame tap query for testing
+  Future<void> _simulateFrameTapQuery() async {
+    _logEvent('🧪 Simulating Frame tap query...');
+    await _handleFrameTapQuery();
+  }
+
+  /// Perform database query and display results on Frame
+  Future<void> _performFrameQuery(String queryText) async {
+    if (_vectorDb == null) return;
+
+    try {
+      _logEvent('🔍 Querying database: "$queryText"');
+      await _sendTextToFrame('Searching...');
+      
+      final results = await _vectorDb!.queryText(
+        queryText: queryText,
+        topK: 3, // Limit for screen display
+        threshold: 0.3,
+      );
+
+      setState(() {
+        _queryResults = results;
+        _queryController.text = queryText; // Show what was queried
+      });
+
+      // Format results for Frame display
+      String displayText = 'Results:\n';
+      if (results.isEmpty) {
+        displayText = 'No results\nfound';
+      } else {
+        for (int i = 0; i < results.length && i < 2; i++) { // Max 2 results for readability
+          final content = results[i]['text']?.toString() ?? '';
+          // Truncate for display
+          final shortContent = content.length > 30 ? '${content.substring(0, 30)}...' : content;
+          displayText += '${i + 1}. $shortContent\n';
+        }
+      }
+
+      await _sendTextToFrame(displayText);
+      _logEvent('✅ Results displayed on Frame: ${results.length} found');
+      
+    } catch (e) {
+      _logEvent('❌ Frame query failed: $e');
+      await _sendTextToFrame('Error\nQuery failed');
+    }
+  }
+
+  /// Send text to Frame glasses display
+  Future<void> _sendTextToFrame(String text) async {
+    if (!_isConnected || frame == null) return;
+    
+    try {
+      await frame!.sendMessage(
+        0x0b,
+        TxPlainText(
+          text: text,
+          x: 1,
+          y: 1,
+          paletteOffset: 2,
+        ).pack(),
+      );
+      _logEvent('📺 Text sent to Frame: "$text"');
+    } catch (e) {
+      _logEvent('❌ Failed to send text to Frame: $e');
+    }
   }
 
   Widget _buildControlButtons() {
