@@ -214,6 +214,16 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       // Initialize only essential services at startup
       _vectorDb = VectorDbService(_logEvent);
       await _vectorDb!.initialize(store);
+      
+      // Add sample data if database is empty (for testing queries)
+      final docCount = _vectorDb!.getDocumentCount();
+      if (docCount == 0) {
+        _logEvent('📝 Database empty, adding sample data...');
+        await _vectorDb!.addSampleData();
+        _logEvent('✅ Sample data added - ${_vectorDb!.getDocumentCount()} documents');
+      } else {
+        _logEvent('📊 Database has $docCount existing documents');
+      }
 
       // Initialize agent system (non-blocking)
       await _initializeAgentSystem();
@@ -1281,23 +1291,28 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     try {
       _logEvent('🎤 Starting voice capture for database query...');
       
-      // Show query prompt on Frame screen
+      // Show query prompt on Frame screen with delay to avoid rapid messages
       await _sendTextToFrame('Listening...\nSpeak your query');
+      await Future.delayed(const Duration(milliseconds: 500)); // Brief pause for display
       
       // Start recording audio for speech-to-text
       // This is a simplified version - in full implementation would capture audio
       // For now, simulate with a delay and use agent ASR
-      await Future.delayed(const Duration(seconds: 3));
+      await Future.delayed(const Duration(seconds: 2)); // Reduced from 3 to 2 seconds
       
       // Simulate speech-to-text result (in real implementation, would use captured audio)
-      const mockQuery = 'What did I do today?'; // This would come from speech recognition
+      const mockQuery = 'Frame glasses'; // This would come from speech recognition - should match sample data
       
       _logEvent('🗣️ Query captured: "$mockQuery"');
       await _performFrameQuery(mockQuery);
       
     } catch (e) {
       _logEvent('❌ Frame tap query failed: $e');
-      await _sendTextToFrame('Error\nQuery failed');
+      // Avoid additional Frame message if there's an error to prevent further issues
+      if (_isConnected && frame != null) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _sendTextToFrame('Error\nQuery failed');
+      }
     }
   }
 
@@ -1313,13 +1328,19 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
     try {
       _logEvent('🔍 Querying database: "$queryText"');
+      _logEvent('📊 Database has ${_vectorDb!.getDocumentCount()} documents');
+      
+      // Add delay before showing search message to prevent rapid Frame updates
+      await Future.delayed(const Duration(milliseconds: 300));
       await _sendTextToFrame('Searching...');
       
       final results = await _vectorDb!.queryText(
         queryText: queryText,
         topK: 3, // Limit for screen display
-        threshold: 0.3,
+        threshold: 0.1, // Lower threshold for better matching
       );
+      
+      _logEvent('📋 Query returned ${results.length} results');
 
       setState(() {
         _queryResults = results;
@@ -1339,12 +1360,18 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
         }
       }
 
+      // Add delay before final result display
+      await Future.delayed(const Duration(milliseconds: 500));
       await _sendTextToFrame(displayText);
       _logEvent('✅ Results displayed on Frame: ${results.length} found');
       
     } catch (e) {
       _logEvent('❌ Frame query failed: $e');
-      await _sendTextToFrame('Error\nQuery failed');
+      // Add delay before error message
+      if (_isConnected && frame != null) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _sendTextToFrame('Error\nQuery failed');
+      }
     }
   }
 
@@ -1888,7 +1915,10 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
             paletteOffset: 2,
           ).pack());
 
-      _logEvent('✅ Frame display initialized');
+      // Subscribe to tap events (0x10 = TAP_SUBS_MSG, 1 = enable)
+      await frame!.sendMessage(0x10, TxCode(value: 1).pack());
+      
+      _logEvent('✅ Frame display initialized and tap detection enabled');
     } catch (e) {
       _logEvent('⚠️ Frame display setup: $e');
     }
