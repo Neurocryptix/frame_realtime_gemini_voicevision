@@ -130,6 +130,8 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
   // Vector database with MobileBERT
   VectorDbService? _vectorDb;
+  final TextEditingController _queryController = TextEditingController();
+  List<Map<String, dynamic>> _queryResults = [];
 
   // Simple Gemini realtime connection (like original)
   gemini_realtime.GeminiRealtime? _gemini;
@@ -177,6 +179,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   @override
   void dispose() {
     _scrollController.dispose();
+    _queryController.dispose();
     _audioSubscription?.cancel();
     _frameLogSubscription?.cancel();
     _frameDataSubscription?.cancel();
@@ -270,7 +273,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     try {
       _logEvent('🤖 Initializing Agent Manager...');
 
-      _agentManager = AgentManager(logger: _logEvent);
+      _agentManager = AgentManager(logger: _logEvent, store: store);
       final agentReady = await _agentManager!.initialize();
 
       if (agentReady) {
@@ -1136,10 +1139,129 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                   ),
                 ),
               ),
+
+            // Database query section
+            const SizedBox(height: 16),
+            _buildDatabaseQuerySection(),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildDatabaseQuerySection() {
+    return ExpansionTile(
+      title: const Text('🗃️ Database Query'),
+      subtitle: Text(_vectorDb != null ? 'Connected' : 'Not available'),
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              TextField(
+                controller: _queryController,
+                decoration: const InputDecoration(
+                  labelText: 'Search query',
+                  hintText: 'Enter text to search memories...',
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _performDatabaseQuery(),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _vectorDb != null ? _performDatabaseQuery : null,
+                      icon: const Icon(Icons.search),
+                      label: const Text('Query Database'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: _vectorDb != null ? _clearDatabaseResults : null,
+                    icon: const Icon(Icons.clear),
+                    label: const Text('Clear'),
+                  ),
+                ],
+              ),
+              if (_queryResults.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text('Query Results:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _queryResults.length,
+                    itemBuilder: (context, index) {
+                      final result = _queryResults[index];
+                      final content = result['text']?.toString() ?? '';
+                      final score = result['score'] as double? ?? 0.0;
+                      final category = result['category']?.toString() ?? 'general';
+                      
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          title: Text(
+                            content,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text('Category: $category • Score: ${score.toStringAsFixed(3)}'),
+                          dense: true,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+              if (_vectorDb != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Database: ${_vectorDb!.getDocumentCount()} documents stored',
+                  style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _performDatabaseQuery() async {
+    if (_vectorDb == null || _queryController.text.trim().isEmpty) return;
+
+    try {
+      _logEvent('🔍 Querying database: "${_queryController.text}"');
+      
+      final results = await _vectorDb!.queryText(
+        queryText: _queryController.text.trim(),
+        topK: 5,
+        threshold: 0.3,
+      );
+
+      setState(() {
+        _queryResults = results;
+      });
+
+      _logEvent('✅ Found ${results.length} results');
+    } catch (e) {
+      _logEvent('❌ Query failed: $e');
+      setState(() {
+        _queryResults = [];
+      });
+    }
+  }
+
+  void _clearDatabaseResults() {
+    setState(() {
+      _queryController.clear();
+      _queryResults = [];
+    });
+    _logEvent('🧹 Database query results cleared');
   }
 
   Widget _buildControlButtons() {

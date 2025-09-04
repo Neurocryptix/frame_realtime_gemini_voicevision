@@ -4,6 +4,8 @@ import 'asr_service.dart';
 import 'local_llm_service.dart';
 import 'ocr_service.dart';
 import '../models/agent_output.dart';
+import '../../services/vector_db_service.dart';
+import '../../objectbox.g.dart';
 
 /// Agent Manager - Coordinates all agent services and provides unified interface
 /// CRITICAL: This is agent-only and NEVER affects the main Gemini pipeline
@@ -17,6 +19,7 @@ class AgentManager {
   late ASRService _asrService;
   late LocalLLMService _llmService;
   late OCRService _ocrService;
+  VectorDbService? _vectorDbService;
 
   // Agent processing state
   bool _isProcessing = false;
@@ -34,7 +37,16 @@ class AgentManager {
   Stream<AgentProcessingResult> get agentOutput =>
       _agentOutputController.stream;
 
-  AgentManager({void Function(String)? logger}) : _logger = logger;
+  AgentManager({void Function(String)? logger, Store? store}) : _logger = logger {
+    // Initialize vector database service if store is provided
+    if (store != null) {
+      _vectorDbService = VectorDbService((message) => _logger?.call(message));
+      _vectorDbService!.initialize(store).catchError((e) {
+        _logger?.call('⚠️ Vector DB initialization failed: $e');
+        _vectorDbService = null;
+      });
+    }
+  }
 
   /// Initialize all agent services
   Future<bool> initialize() async {
@@ -276,15 +288,43 @@ class AgentManager {
   /// Execute store_memory tool
   Future<Map<String, dynamic>> _executeStoreMemory(
       Map<String, dynamic> params) async {
-    // TODO: Implement with vector database integration
     final content = params['content']?.toString() ?? '';
     final category = params['category']?.toString() ?? 'general';
 
     _logger?.call('💾 Storing memory: $category - $content');
 
+    if (_vectorDbService != null) {
+      try {
+        await _vectorDbService!.addTextWithEmbedding(
+          content: content,
+          metadata: {
+            'source': 'agent',
+            'timestamp': DateTime.now().toIso8601String(),
+            'category': category,
+          },
+        );
+
+        return {
+          'success': true,
+          'action': 'stored',
+          'content': content,
+          'category': category,
+          'id': 'db_${DateTime.now().millisecondsSinceEpoch}',
+        };
+      } catch (e) {
+        _logger?.call('❌ Database store failed: $e');
+        return {
+          'success': false,
+          'action': 'store_failed',
+          'error': e.toString(),
+        };
+      }
+    }
+
+    // Fallback to mock if no database
     return {
       'success': true,
-      'action': 'stored',
+      'action': 'stored_mock',
       'content': content,
       'category': category,
       'id': 'mock_${DateTime.now().millisecondsSinceEpoch}',
@@ -294,14 +334,44 @@ class AgentManager {
   /// Execute retrieve_memory tool
   Future<Map<String, dynamic>> _executeRetrieveMemory(
       Map<String, dynamic> params) async {
-    // TODO: Implement with vector database integration
     final query = params['query']?.toString() ?? '';
+    final topK = params['topK'] as int? ?? 3;
 
     _logger?.call('🔍 Retrieving memories for: $query');
 
+    if (_vectorDbService != null) {
+      try {
+        final results = await _vectorDbService!.queryText(
+          queryText: query,
+          topK: topK,
+          threshold: 0.3,
+        );
+
+        return {
+          'success': true,
+          'action': 'retrieved',
+          'query': query,
+          'results': results.map((result) => {
+            'content': result['text'] ?? '',
+            'confidence': result['score'] ?? 0.0,
+            'metadata': result['metadata'] ?? {},
+            'category': result['category'] ?? 'general',
+          }).toList(),
+        };
+      } catch (e) {
+        _logger?.call('❌ Database retrieve failed: $e');
+        return {
+          'success': false,
+          'action': 'retrieve_failed',
+          'error': e.toString(),
+        };
+      }
+    }
+
+    // Fallback to mock if no database
     return {
       'success': true,
-      'action': 'retrieved',
+      'action': 'retrieved_mock',
       'query': query,
       'results': [
         {'content': 'Sample memory 1', 'confidence': 0.8},

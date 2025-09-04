@@ -18,7 +18,7 @@ class ASRService {
   static const int sampleRate = 16000; // Expected sample rate
   static const int minAudioLength =
       1600; // Minimum audio length (100ms at 16kHz)
-  static const double silenceThreshold = 0.01; // Voice activity threshold
+  static const double silenceThreshold = 0.001; // Voice activity threshold (lowered for better detection)
 
   // Audio buffer for real-time processing (agent-only, doesn't affect main stream)
   final List<int> _audioBuffer = [];
