@@ -173,8 +173,8 @@ class _MainAppState extends State<MainApp> {
         maxResults: 1,
       );
       
-      if (result.documents.isNotEmpty) {
-        _addLog('✅ RAG query successful: ${result.documents.first.content.substring(0, 50)}...');
+      if (result.relevantDocuments.isNotEmpty) {
+        _addLog('✅ RAG query successful: ${result.relevantDocuments.first.content.substring(0, 50)}...');
       } else {
         _addLog('⚠️ No results from RAG query');
       }

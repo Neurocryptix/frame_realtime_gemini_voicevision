@@ -126,10 +126,10 @@ class AIEdgeRagService {
       // Configure AI Edge LLM options for RAG processing
       final options = LlmInferenceOptions.cpu(
         modelPath: _modelPath!,
+        cacheDir: '${Directory(_modelPath!).parent.path}/cache',
+        temperature: 0.7,
+        topK: 40,
         maxTokens: 2048,
-        randomSeed: 42,
-        // RAG-specific configurations
-        loraPath: null, // Optional LoRA adaptation
       );
 
       // Create the AI Edge inference engine
@@ -309,7 +309,7 @@ Response:''';
       }
       
       return {'doc': doc, 'score': score};
-    }).where((item) => item['score']! > 0).toList();
+    }).where((item) => (item['score']! as int) > 0).toList();
 
     scoredDocs.sort((a, b) => (b['score']! as int).compareTo(a['score']! as int));
     
@@ -476,7 +476,7 @@ Answer:''';
 
   /// Dispose resources
   void dispose() {
-    _engine?.close();
+    // MediaPipe GenAI engine cleanup (if dispose method exists)
     _engine = null;
     _isInitialized = false;
     _ragDocuments.clear();

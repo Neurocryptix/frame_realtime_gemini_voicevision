@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
-import 'package:flutter_gemini/flutter_gemini.dart';
+// Removed flutter_gemini - using google_generative_ai instead
 import 'package:objectbox/objectbox.dart';
 import 'package:frame_realtime_gemini_voicevision/model/document_entity.dart';
 import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart';
@@ -13,7 +13,7 @@ import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart';
 class EnhancedRagService {
   late final Box<Document> _box;
   late final Store _store;
-  final Gemini _gemini = Gemini.instance;
+  // Using Google Generative AI instead of flutter_gemini
 
   bool _isInitialized = false;
 

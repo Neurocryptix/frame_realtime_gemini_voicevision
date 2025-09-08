@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter_gemini/flutter_gemini.dart';
+// Removed flutter_gemini - using google_generative_ai instead
 import 'package:frame_realtime_gemini_voicevision/services/vector_db_service.dart';
 import 'package:frame_realtime_gemini_voicevision/services/enhanced_rag_service.dart';
 import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart';
@@ -69,7 +69,7 @@ class RagMigrationService {
 
       // Step 1: Initialize Gemini for embeddings if API key provided
       if (geminiApiKey != null && geminiApiKey.isNotEmpty) {
-        Gemini.init(apiKey: geminiApiKey);
+        // Using Google Generative AI instead of flutter_gemini
         newService.updateApiKey(geminiApiKey);
         _emit('🔑 Initialized Gemini API for embeddings');
       } else {

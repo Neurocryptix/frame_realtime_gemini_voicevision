@@ -24,8 +24,7 @@ class LocalLLMService {
   late http.Client _httpClient;
 
   // Gemma Nano for on-device agentic processing
-  dynamic
-      _gemmaModel; // Will be properly typed once flutter_gemma API is verified
+  InferenceModel? _gemmaModel; // FlutterGemma model instance
   bool _gemmaInitialized = false;
   bool _modelDownloadInProgress = false;
   String? _modelPath;
@@ -130,9 +129,8 @@ class LocalLLMService {
   Future<bool> _initializeGemmaModel() async {
     try {
       _logger?.call('🔧 Initializing Gemma Nano model instance...');
-      _gemmaModel = await FlutterGemma.instance.createGemma(
-        modelPath: _modelPath!,
-        modelType: ModelType.gemma2bIt, // Instruction-tuned model
+      _gemmaModel = await FlutterGemmaPlugin.instance.createModel(
+        modelType: ModelType.gemmaIt, // Instruction-tuned model
         maxTokens: 512,
       );
       _gemmaInitialized = true;
@@ -231,7 +229,9 @@ class LocalLLMService {
 
     _logger?.call('🧠 Processing with Gemma Nano: ${_truncateForLog(context)}');
 
-    final response = await _gemmaModel.text(fullPrompt);
+    // Create a chat session and get response
+    final chat = await _gemmaModel.createChat();
+    final response = await chat.sendMessage(fullPrompt);
 
     if (response != null && response.isNotEmpty) {
       _logger?.call('✅ Gemma Nano response: ${_truncateForLog(response)}');
