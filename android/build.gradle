@@ -1,7 +1,7 @@
 // Top-level Gradle file
 
 buildscript {
-    ext.kotlin_version = '1.9.10'
+    ext.kotlin_version = '1.9.23'
 
     repositories {
         google()
