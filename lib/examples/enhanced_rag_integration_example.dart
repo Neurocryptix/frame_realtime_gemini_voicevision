@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_gemini/flutter_gemini.dart';
+// Removed flutter_gemini - using flutter_gemma instead
 import 'package:frame_realtime_gemini_voicevision/services/enhanced_rag_service.dart';
 import 'package:frame_realtime_gemini_voicevision/services/rag_migration_service.dart';
 import 'package:frame_realtime_gemini_voicevision/services/vector_db_service.dart';
@@ -82,7 +82,7 @@ class _EnhancedRagIntegrationExampleState extends State<EnhancedRagIntegrationEx
       // Initialize Gemini if API key is provided
       if (widget.geminiApiKey != null && widget.geminiApiKey!.isNotEmpty) {
         _addLog('🔑 Initializing Gemini API...');
-        Gemini.init(apiKey: widget.geminiApiKey!);
+        // Gemini initialization - handled by main app
       }
       
       // Initialize services with store

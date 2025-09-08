@@ -130,7 +130,7 @@ class LocalLLMService {
   Future<bool> _initializeGemmaModel() async {
     try {
       _logger?.call('🔧 Initializing Gemma Nano model instance...');
-      _gemmaModel = await Gemma.instance.createGemma(
+      _gemmaModel = await FlutterGemma.instance.createGemma(
         modelPath: _modelPath!,
         modelType: ModelType.gemma2bIt, // Instruction-tuned model
         maxTokens: 512,
@@ -701,7 +701,8 @@ Analyze the user context and determine if any tools should be called. Respond wi
   /// Get model installation status and information
   Future<Map<String, dynamic>> getModelStatus() async {
     try {
-      final modelInstalled = await _checkModelInstalled();
+      final modelFile = File(_modelPath ?? '');
+      final modelInstalled = await modelFile.exists();
       // TODO: Re-enable when flutter_gemma API is verified
       // final modelManager = FlutterGemmaPlugin.instance.modelManager;
 

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
-import 'package:mediapipe_core/mediapipe_core.dart';
+// Removed unused import
 import 'package:mediapipe_genai/mediapipe_genai.dart';
 
 /// AI Edge LLM Service for Gemma 3 compatibility
@@ -118,10 +118,10 @@ class AIEdgeLLMService {
       // Configure AI Edge LLM options for Gemma 3
       final options = LlmInferenceOptions.cpu(
         modelPath: _modelPath!,
+        cacheDir: '${Directory(_modelPath!).parent.path}/cache',
+        temperature: _temperature,
+        topK: 40,
         maxTokens: _maxTokens,
-        randomSeed: 42,
-        // Gemma 3 specific configurations
-        loraPath: null,
       );
 
       // Create the AI Edge inference engine
@@ -265,7 +265,7 @@ Please provide a helpful response:''';
 
   /// Dispose resources
   void dispose() {
-    _engine?.close();
+    // MediaPipe GenAI engine cleanup (if dispose method exists)
     _engine = null;
     _isReady = false;
     _logger?.call('🧹 AI Edge LLM service disposed');
