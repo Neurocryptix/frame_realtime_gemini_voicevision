@@ -1,6 +1,6 @@
 import 'dart:async';
 import '../../services/enhanced_rag_service.dart';
-import '../models/agent_output.dart';
+// import '../models/agent_output.dart'; // Unused import
 
 /// Enhanced Agent Service with Gemma 3 compatible RAG
 /// Integrates with the new enhanced RAG service for better memory and retrieval

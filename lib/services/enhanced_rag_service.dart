@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
-import 'package:flutter/services.dart';
+
+
 // Removed flutter_gemini - using google_generative_ai instead
 import 'package:objectbox/objectbox.dart';
 import 'package:frame_realtime_gemini_voicevision/model/document_entity.dart';
-import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart';
+// import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart'; // Disabled - using AI Edge RAG instead
 
 /// Enhanced RAG Service compatible with Gemma 3
 /// Uses flutter_gemini for embeddings instead of MobileBERT
@@ -74,16 +74,8 @@ class EnhancedRagService {
         return _generateFallbackEmbedding(text);
       }
 
-      final embeddingResponse = await _gemini.embedContent(text);
-
-      if (embeddingResponse != null && embeddingResponse.isNotEmpty) {
-        final embedding = embeddingResponse.map((num) => num.toDouble()).toList();
-        _emit('🧠 Generated Gemini embedding (${embedding.length} dims)');
-        return embedding;
-      } else {
-        _emit('⚠️ Empty Gemini embedding response, using fallback');
-        return _generateFallbackEmbedding(text);
-      }
+      // TODO: Replace with Google Generative AI embedding API
+      throw UnimplementedError('Embedding generation not yet implemented for Enhanced RAG Service');
     } catch (e) {
       _emit('❌ Gemini embedding failed: $e, using fallback');
       return _generateFallbackEmbedding(text);
@@ -384,7 +376,6 @@ class EnhancedRagService {
         
         if (includeMetadata && metadata != null) {
           final type = metadata['type'] ?? 'unknown';
-          final timestamp = metadata['timestamp'] ?? metadata['addedAt'];
           contextLine = '[$scorePercent% ($semanticPercent% semantic) | $type] $content';
         }
         

@@ -5,7 +5,7 @@ import 'package:frame_realtime_gemini_voicevision/services/enhanced_rag_service.
 import 'package:frame_realtime_gemini_voicevision/services/rag_migration_service.dart';
 import 'package:frame_realtime_gemini_voicevision/services/vector_db_service.dart';
 import 'package:frame_realtime_gemini_voicevision/agent/services/enhanced_agent_service.dart';
-import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart';
+// import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart'; // Disabled - using AI Edge RAG instead
 
 /// Example showing how to integrate the Enhanced RAG System
 /// This demonstrates migration from old system to new Gemma 3 compatible RAG
@@ -23,7 +23,7 @@ class EnhancedRagIntegrationExample extends StatefulWidget {
 
 class _EnhancedRagIntegrationExampleState extends State<EnhancedRagIntegrationExample> {
   // Core services
-  Store? _store;
+  dynamic _store; // Disabled ObjectBox - using AI Edge RAG instead
   EnhancedRagService? _ragService;
   VectorDbService? _oldVectorService;
   RagMigrationService? _migrationService;
@@ -31,7 +31,7 @@ class _EnhancedRagIntegrationExampleState extends State<EnhancedRagIntegrationEx
   
   // UI state
   bool _isInitializing = false;
-  bool _isMigrating = false;
+
   bool _isReady = false;
   List<String> _logs = [];
   
@@ -71,7 +71,7 @@ class _EnhancedRagIntegrationExampleState extends State<EnhancedRagIntegrationEx
       
       // Step 1: Initialize ObjectBox store
       _addLog('📦 Setting up ObjectBox store...');
-      _store = await openStore();
+      // _store = await openStore(); // Disabled ObjectBox - using AI Edge RAG instead
       
       // Step 2: Initialize services
       _addLog('🔧 Initializing services...');
@@ -148,7 +148,7 @@ class _EnhancedRagIntegrationExampleState extends State<EnhancedRagIntegrationEx
   /// Perform migration from old system to new RAG system
   Future<void> _performMigration() async {
     setState(() {
-      _isMigrating = true;
+      _isInitializing = true;
     });
 
     try {
@@ -173,7 +173,7 @@ class _EnhancedRagIntegrationExampleState extends State<EnhancedRagIntegrationEx
       _addLog('❌ Migration error: $e');
     } finally {
       setState(() {
-        _isMigrating = false;
+        _isInitializing = false;
       });
     }
   }

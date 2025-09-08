@@ -89,7 +89,7 @@ class AIEdgeModelManager {
       await modelDir.create(recursive: true);
       
       _modelPath = '${modelDir.path}/$_gemmaModelName';
-      final tempPath = '${_modelPath}.tmp';
+      final tempPath = '$_modelPath.tmp';
 
       _emit('📥 Downloading from: ${_truncateUrl(downloadUrl)}');
       _emit('💾 Saving to: $_modelPath');
@@ -148,7 +148,7 @@ class AIEdgeModelManager {
       await modelDir.create(recursive: true);
       
       _modelPath = '${modelDir.path}/$_gemmaModelName';
-      final tempPath = '${_modelPath}.tmp';
+      final tempPath = '$_modelPath.tmp';
 
       _emit('🔍 Finding Gemma 3 model on Kaggle...');
 
@@ -204,7 +204,7 @@ class AIEdgeModelManager {
       const framework = 'gguf';
       const variation = 'gemma-3n-2b-it-int4';
       
-      final apiUrl = 'https://www.kaggle.com/api/v1/models/$modelOwner/$modelName/$framework/$variation';
+      const apiUrl = 'https://www.kaggle.com/api/v1/models/$modelOwner/$modelName/$framework/$variation';
       
       // Create basic auth header
       final credentials = base64Encode(utf8.encode('$username:$apiKey'));

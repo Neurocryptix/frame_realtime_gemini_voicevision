@@ -28,7 +28,7 @@ class _AIEdgeIntegrationExampleState extends State<AIEdgeIntegrationExample> {
   // UI state
   bool _isInitializing = false;
   bool _isReady = false;
-  List<String> _logs = [];
+  final List<String> _logs = [];
   
   // Controllers
   final _queryController = TextEditingController();

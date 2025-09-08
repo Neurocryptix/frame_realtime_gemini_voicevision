@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_gemma/src/flutter_gemma_src.dart';
 import 'package:flutter/services.dart';
 import '../models/agent_output.dart';
 
@@ -15,7 +16,7 @@ class LocalLLMService {
   bool _isReady = false;
 
   // Local LLM configuration (completely separate from Gemini)
-  String _baseUrl = 'http://localhost:11434'; // Default Ollama port
+
   String _modelName = 'llama3.2:1b'; // Lightweight model for mobile
   bool _useLocalApi = false;
   bool _useGemmaNano = false;
@@ -35,10 +36,9 @@ class LocalLLMService {
 
   LocalLLMService({
     void Function(String)? logger,
-    String? baseUrl,
     String? modelName,
   }) : _logger = logger {
-    if (baseUrl != null) _baseUrl = baseUrl;
+
     if (modelName != null) _modelName = modelName;
     _httpClient = http.Client();
   }
@@ -143,42 +143,7 @@ class LocalLLMService {
     }
   }
 
-  /// Test connection to local LLM API (doesn't affect Gemini)
-  Future<bool> _testLocalLLMConnection() async {
-    try {
-      // Test Ollama API endpoint
-      final response = await _httpClient.get(
-        Uri.parse('$_baseUrl/api/tags'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 3));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final models = data['models'] as List?;
-
-        if (models != null && models.isNotEmpty) {
-          _logger?.call('🔍 Found ${models.length} local models');
-
-          // Check if our preferred model is available
-          final hasPreferredModel = models.any((model) =>
-              model['name'].toString().startsWith(_modelName.split(':').first));
-
-          if (!hasPreferredModel) {
-            // Use first available model
-            _modelName = models.first['name'];
-            _logger?.call('📝 Using available model: $_modelName');
-          }
-
-          return true;
-        }
-      }
-
-      return false;
-    } catch (e) {
-      _logger?.call('🔍 Local LLM connection test failed: $e');
-      return false;
-    }
-  }
 
   /// Check if the service is ready
   bool get isReady => _isReady;
@@ -230,12 +195,13 @@ class LocalLLMService {
     _logger?.call('🧠 Processing with Gemma Nano: ${_truncateForLog(context)}');
 
     // Create a chat session and get response
-    final chat = await _gemmaModel.createChat();
-    final response = await chat.sendMessage(fullPrompt);
+    final chat = await _gemmaModel!.createChat();
+    await chat.addQueryChunk(Message.text(text: fullPrompt, isUser: true));
+    final response = await chat.generateChatResponse();
 
-    if (response != null && response.isNotEmpty) {
-      _logger?.call('✅ Gemma Nano response: ${_truncateForLog(response)}');
-      return _parseRealLLMResponse(response);
+    if (response is TextResponse && response.token.isNotEmpty) {
+      _logger?.call('✅ Gemma Nano response: ${_truncateForLog(response.token)}');
+      return _parseRealLLMResponse(response.token);
     } else {
       throw Exception('Empty response from Gemma Nano');
     }
@@ -280,76 +246,9 @@ Instructions:
 Respond with your analysis and tool calls:''';
   }
 
-  /// Real local LLM processing using Ollama or similar API
-  Future<Map<String, dynamic>> _realLLMProcess(
-      String context, List<String> availableTools) async {
-    try {
-      // Construct prompt with tool calling instructions
-      final systemPrompt = _buildSystemPrompt(availableTools);
-      final fullPrompt =
-          '$systemPrompt\n\nUser Context: $context\n\nPlease respond with your analysis and any tool calls needed.';
 
-      // Call local LLM API (Ollama format)
-      final response = await _httpClient
-          .post(
-            Uri.parse('$_baseUrl/api/generate'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'model': _modelName,
-              'prompt': fullPrompt,
-              'stream': false,
-              'options': {
-                'temperature': 0.3,
-                'top_p': 0.9,
-                'max_tokens': 500,
-              },
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final generatedText = data['response'] ?? '';
 
-        // Parse the response to extract content and tool calls
-        return _parseRealLLMResponse(generatedText);
-      } else {
-        _logger?.call('❌ Local LLM API error: ${response.statusCode}');
-        throw Exception('Local LLM API returned ${response.statusCode}');
-      }
-    } catch (e) {
-      _logger?.call('❌ Real LLM processing failed: $e');
-      rethrow;
-    }
-  }
-
-  /// Build system prompt for tool calling
-  String _buildSystemPrompt(List<String> availableTools) {
-    final toolDescriptions = availableTools.map((tool) {
-      switch (tool) {
-        case 'store_memory':
-          return '- store_memory(content, category): Store important information for later recall';
-        case 'retrieve_memory':
-          return '- retrieve_memory(query): Search for relevant stored information';
-        case 'update_memory':
-          return '- update_memory(id, content): Update existing stored information';
-        case 'analyze_content':
-          return '- analyze_content(type, content): Analyze content for insights';
-        default:
-          return '- $tool: Available tool';
-      }
-    }).join('\n');
-
-    return '''You are an intelligent assistant integrated with Frame smart glasses. You help process user interactions and visual content.
-
-Available tools:
-$toolDescriptions
-
-When you need to use a tool, format it like this:
-TOOL_CALL: tool_name(parameter1="value1", parameter2="value2")
-
-Analyze the user context and determine if any tools should be called. Respond with your analysis and any necessary tool calls.''';
-  }
 
   /// Parse real LLM response to extract content and tool calls
   Map<String, dynamic> _parseRealLLMResponse(String response) {
@@ -788,10 +687,10 @@ Analyze the user context and determine if any tools should be called. Respond wi
     // Clean up Gemma Nano resources
     if (_gemmaModel != null) {
       try {
-        _gemmaModel!.dispose();
-        _logger?.call('🧹 Gemma model disposed');
+        _gemmaModel!.close(); // Fire and forget
+        _logger?.call('🧹 Gemma model closed');
       } catch (e) {
-        _logger?.call('⚠️ Error disposing Gemma model: $e');
+        _logger?.call('⚠️ Error closing Gemma model: $e');
       }
       _gemmaModel = null;
     }

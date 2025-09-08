@@ -2,7 +2,7 @@ import 'dart:async';
 // Removed flutter_gemini - using google_generative_ai instead
 import 'package:frame_realtime_gemini_voicevision/services/vector_db_service.dart';
 import 'package:frame_realtime_gemini_voicevision/services/enhanced_rag_service.dart';
-import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart';
+// import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart'; // Disabled - using AI Edge RAG instead
 
 /// Service to migrate from old VectorDbService to Enhanced RAG Service
 /// Handles data migration and system transition

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frame_realtime_gemini_voicevision/services/vector_db_service.dart';
-import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart';
-import 'dart:io';
+// import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart'; // Disabled - using AI Edge RAG instead
+
 
 /// Helper function to conditionally run tests when ObjectBox is available
 void objectBoxTest(String description, dynamic Function() body,
@@ -18,15 +18,15 @@ void objectBoxTest(String description, dynamic Function() body,
 void main() {
   group('VectorDbService MobileBERT Integration Tests', () {
     VectorDbService? vectorDb;
-    late Store? store;
+    dynamic store; // Disabled ObjectBox - using AI Edge RAG instead
     final List<String> testLogs = [];
     bool objectBoxAvailable = false;
 
     setUpAll(() async {
       try {
         // Create a temporary directory for test database
-        final testDir = Directory.systemTemp.createTempSync('vector_db_test');
-        store = Store(getObjectBoxModel(), directory: testDir.path);
+
+        // store = Store(getObjectBoxModel(), directory: testDir.path); // Disabled ObjectBox - using AI Edge RAG instead
         objectBoxAvailable = true;
       } catch (e) {
         // ObjectBox native library not available in test environment

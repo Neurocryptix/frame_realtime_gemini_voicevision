@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -20,7 +20,7 @@ import 'package:frame_realtime_gemini_voicevision/services/vector_db_service.dar
 import 'package:frame_realtime_gemini_voicevision/gemini_realtime.dart'
     as gemini_realtime;
 import 'package:frame_realtime_gemini_voicevision/audio_upsampler.dart';
-import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart';
+// import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart'; // Disabled - using AI Edge RAG instead
 
 // Foreground service (matches official repository)
 import 'package:frame_realtime_gemini_voicevision/foreground_service.dart';
@@ -33,7 +33,7 @@ import 'package:frame_realtime_gemini_voicevision/agent/services/agent_manager.d
 // import 'package:frame_realtime_gemini_voicevision/agent/ui/agent_demo_widget.dart'; // Unused - using integrated interface
 
 // Global ObjectBox store instance
-late Store store;
+// late Store store; // Disabled - using AI Edge RAG instead
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,10 +49,10 @@ void main() async {
 
 Future<void> _initializeObjectBox() async {
   try {
-    final appDir = await getApplicationDocumentsDirectory();
-    final storeDir = Directory('${appDir.path}/objectbox');
 
-    store = await openStore(directory: storeDir.path);
+
+
+    // store = await openStore(directory: storeDir.path); // Disabled - using AI Edge RAG instead
     debugPrint('✅ ObjectBox initialized successfully');
   } catch (e) {
     debugPrint('❌ ObjectBox initialization failed: $e');
@@ -229,7 +229,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
       // Initialize only essential services at startup
       _vectorDb = VectorDbService(_logEvent);
-      await _vectorDb!.initialize(store);
+      // await _vectorDb!.initialize(store); // Disabled ObjectBox - using AI Edge RAG instead
       
       // Add sample data if database is empty (for testing queries)
       final docCount = _vectorDb!.getDocumentCount();
@@ -299,7 +299,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     try {
       _logEvent('🤖 Initializing Agent Manager...');
 
-      _agentManager = AgentManager(logger: _logEvent, store: store);
+      _agentManager = AgentManager(logger: _logEvent, vectorDbService: _vectorDb);
       final agentReady = await _agentManager!.initialize();
 
       if (agentReady) {

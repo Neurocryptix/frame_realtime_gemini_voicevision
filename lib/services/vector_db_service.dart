@@ -4,7 +4,7 @@ import 'package:objectbox/objectbox.dart';
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:frame_realtime_gemini_voicevision/model/document_entity.dart';
-import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart';
+// import 'package:frame_realtime_gemini_voicevision/objectbox.g.dart'; // Disabled - using AI Edge RAG instead
 import 'package:frame_realtime_gemini_voicevision/utils/tensor_utils.dart';
 
 class VectorDbService {

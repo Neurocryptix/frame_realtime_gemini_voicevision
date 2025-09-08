@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/services.dart';
+
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
-import 'package:mediapipe_core/mediapipe_core.dart';
+// import 'package:mediapipe_core/mediapipe_core.dart'; // Unused import
 import 'package:mediapipe_genai/mediapipe_genai.dart';
 
 /// Pure Google AI Edge RAG Service
@@ -17,7 +17,7 @@ class AIEdgeRagService {
   String? _modelPath;
   
   // Configuration
-  static const String _gemmaModelUrl = 'YOUR_KAGGLE_MODEL_URL'; // Must be provided by user
+
   static const String _gemmaModelName = 'gemma-3n-2b-it-int4.bin';
   
   // RAG memory storage (in-memory for AI Edge processing)

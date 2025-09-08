@@ -183,7 +183,7 @@ class AIEdgeLLMService {
 
   /// Build optimized prompt for AI Edge Gemma 3
   String _buildAIEdgePrompt(String context, String? systemPrompt) {
-    final defaultSystemPrompt = '''
+    const defaultSystemPrompt = '''
 You are an intelligent AI assistant running on Google AI Edge with Gemma 3. 
 You help users with Frame smart glasses by processing their voice and visual inputs.
 Be concise, helpful, and accurate in your responses.
