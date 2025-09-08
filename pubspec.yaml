@@ -83,8 +83,9 @@ dependencies:
   # GOOGLE AI EDGE RAG (Pure Google AI Edge implementation)
   # ═══════════════════════════════════════════════════════════════════════════
   
-  mediapipe_core: ^0.0.1
-  mediapipe_genai: ^0.0.1            # Official Google AI Edge RAG
+  # Temporarily disabled for CI compatibility - requires Flutter master channel
+  # mediapipe_core: ^0.0.1
+  # mediapipe_genai: ^0.0.1            # Official Google AI Edge RAG
   
   # Remove ObjectBox - replaced by Google AI Edge RAG
   # objectbox: ^4.0.0                   

@@ -110,7 +110,7 @@ void main() {
       );
       
       expect(
-        () => llmService.processWithAIEdge(context: 'test'),
+        () => llmService.processWithAIEdge(input: 'test'),
         throwsException,
       );
       
@@ -157,6 +157,7 @@ void main() {
         response: 'test response',
         relevantDocuments: [],
         processingTime: const Duration(milliseconds: 100),
+        confidence: 0.8,
         timestamp: DateTime.now(),
         metadata: {'test': true},
       );
