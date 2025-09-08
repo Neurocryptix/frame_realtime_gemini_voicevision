@@ -1,0 +1,468 @@
+import 'dart:async';
+import '../../services/enhanced_rag_service.dart';
+import '../models/agent_output.dart';
+
+/// Enhanced Agent Service with Gemma 3 compatible RAG
+/// Integrates with the new enhanced RAG service for better memory and retrieval
+class EnhancedAgentService {
+  final EnhancedRagService _ragService;
+  final void Function(String)? _logger;
+  bool _isInitialized = false;
+
+  EnhancedAgentService({
+    required EnhancedRagService ragService,
+    void Function(String)? logger,
+  })  : _ragService = ragService,
+        _logger = logger;
+
+  /// Initialize the enhanced agent service
+  Future<bool> initialize() async {
+    try {
+      _logger?.call('🚀 Initializing Enhanced Agent Service...');
+
+      if (!_ragService.isInitialized) {
+        _logger?.call('❌ RAG service not initialized');
+        return false;
+      }
+
+      _isInitialized = true;
+      _logger?.call('✅ Enhanced Agent Service ready');
+      return true;
+    } catch (e) {
+      _logger?.call('❌ Enhanced Agent Service initialization failed: $e');
+      return false;
+    }
+  }
+
+  /// Process user query with enhanced context retrieval
+  Future<AgentOutput> processQuery({
+    required String query,
+    Map<String, dynamic>? context,
+    bool storeQuery = true,
+  }) async {
+    if (!_isInitialized) {
+      throw Exception('Enhanced Agent Service not initialized');
+    }
+
+    final startTime = DateTime.now();
+
+    try {
+      // Step 1: Store the user query
+      if (storeQuery) {
+        await _ragService.addDocument(
+          content: query,
+          metadata: {
+            'type': 'user_query',
+            'source': 'enhanced_agent',
+            'timestamp': startTime.toIso8601String(),
+            'context': context?.toString() ?? 'none',
+          },
+        );
+      }
+
+      // Step 2: Retrieve relevant context using hybrid search
+      final relevantContext = await _ragService.getConversationContext(
+        query: query,
+        maxResults: 5,
+        threshold: 0.3,
+        includeMetadata: true,
+      );
+
+      // Step 3: Find similar previous queries for patterns
+      final similarQueries = await _ragService.semanticSearch(
+        query: query,
+        limit: 3,
+        similarityThreshold: 0.4,
+        metadataFilter: {'type': 'user_query'},
+        hybridSearch: true,
+      );
+
+      // Step 4: Generate response based on context
+      final response = await _generateContextualResponse(
+        query: query,
+        relevantContext: relevantContext,
+        similarQueries: similarQueries,
+        additionalContext: context,
+      );
+
+      // Step 5: Store the response
+      await _ragService.addDocument(
+        content: response,
+        metadata: {
+          'type': 'agent_response',
+          'source': 'enhanced_agent',
+          'originalQuery': query,
+          'timestamp': DateTime.now().toIso8601String(),
+          'processingTimeMs': DateTime.now().difference(startTime).inMilliseconds,
+        },
+      );
+
+      final processingTime = DateTime.now().difference(startTime);
+      _logger?.call('🧠 Processed query in ${processingTime.inMilliseconds}ms');
+
+      return AgentOutput(
+        query: query,
+        response: response,
+        relevantContext: relevantContext,
+        confidence: _calculateConfidence(similarQueries),
+        processingTime: processingTime,
+        timestamp: startTime,
+        metadata: {
+          'contextDocuments': similarQueries.length,
+          'hybridSearch': true,
+          'embeddingModel': 'gemini',
+        },
+      );
+    } catch (e) {
+      _logger?.call('❌ Query processing failed: $e');
+      
+      return AgentOutput(
+        query: query,
+        response: 'I encountered an error processing your query. Please try again.',
+        relevantContext: '',
+        confidence: 0.0,
+        processingTime: DateTime.now().difference(startTime),
+        timestamp: startTime,
+        metadata: {'error': e.toString()},
+      );
+    }
+  }
+
+  /// Generate contextual response based on retrieved information
+  Future<String> _generateContextualResponse({
+    required String query,
+    required String relevantContext,
+    required List<Map<String, Object?>> similarQueries,
+    Map<String, dynamic>? additionalContext,
+  }) async {
+    try {
+      // Analyze the query type
+      final queryType = _analyzeQueryType(query);
+      
+      // Build response based on available context
+      final responseBuilder = StringBuffer();
+
+      switch (queryType) {
+        case QueryType.factual:
+          if (relevantContext.contains('No relevant')) {
+            responseBuilder.write('I don\'t have specific information about that topic in my memory. ');
+          } else {
+            responseBuilder.write('Based on my memory, ');
+            responseBuilder.write(_extractKeyInformation(relevantContext));
+          }
+          break;
+
+        case QueryType.conversational:
+          if (similarQueries.isNotEmpty) {
+            responseBuilder.write('I remember we\'ve discussed similar topics. ');
+          }
+          responseBuilder.write(_generateConversationalResponse(query, relevantContext));
+          break;
+
+        case QueryType.procedural:
+          if (relevantContext.contains('No relevant')) {
+            responseBuilder.write('Let me help you with that step by step. ');
+          } else {
+            responseBuilder.write('Based on previous interactions, here\'s how to approach this: ');
+            responseBuilder.write(_extractProcedureSteps(relevantContext));
+          }
+          break;
+
+        case QueryType.analytical:
+          responseBuilder.write('Let me analyze this for you. ');
+          if (!relevantContext.contains('No relevant')) {
+            responseBuilder.write('From the available context: ');
+            responseBuilder.write(_analyzeContext(relevantContext));
+          }
+          break;
+      }
+
+      // Add contextual insights if available
+      if (similarQueries.isNotEmpty) {
+        responseBuilder.write('\n\nRelated insights: ');
+        final insights = _generateInsights(similarQueries);
+        responseBuilder.write(insights);
+      }
+
+      return responseBuilder.toString().trim();
+    } catch (e) {
+      _logger?.call('❌ Response generation failed: $e');
+      return 'I understand your question but encountered an issue generating a detailed response. Could you rephrase or provide more context?';
+    }
+  }
+
+  /// Analyze query type for better response generation
+  QueryType _analyzeQueryType(String query) {
+    final queryLower = query.toLowerCase();
+
+    if (queryLower.contains(RegExp(r'\b(what|who|when|where|which)\b'))) {
+      return QueryType.factual;
+    } else if (queryLower.contains(RegExp(r'\b(how|step|process|guide)\b'))) {
+      return QueryType.procedural;
+    } else if (queryLower.contains(RegExp(r'\b(analyze|compare|evaluate|why)\b'))) {
+      return QueryType.analytical;
+    } else {
+      return QueryType.conversational;
+    }
+  }
+
+  /// Extract key information from context
+  String _extractKeyInformation(String context) {
+    final lines = context.split('\n');
+    final keyInfo = <String>[];
+    
+    for (final line in lines) {
+      if (line.contains('[') && line.contains('%]')) {
+        final content = line.substring(line.indexOf(']') + 1).trim();
+        if (content.isNotEmpty && content.length > 10) {
+          keyInfo.add(content);
+        }
+      }
+    }
+    
+    if (keyInfo.isEmpty) {
+      return 'I have some related information but it may not be directly relevant.';
+    }
+    
+    return keyInfo.take(2).join(' Additionally, ');
+  }
+
+  /// Generate conversational response
+  String _generateConversationalResponse(String query, String context) {
+    final responses = [
+      'That\'s an interesting point. ',
+      'I understand what you\'re asking about. ',
+      'Let me share what I know about that. ',
+      'That\'s something worth discussing. ',
+    ];
+    
+    final randomIndex = query.hashCode % responses.length;
+    return responses[randomIndex.abs()];
+  }
+
+  /// Extract procedure steps from context
+  String _extractProcedureSteps(String context) {
+    final lines = context.split('\n');
+    final steps = <String>[];
+    
+    for (final line in lines) {
+      if (line.contains('step') || line.contains('process') || line.contains('how')) {
+        final content = line.substring(line.indexOf(']') + 1).trim();
+        if (content.isNotEmpty) {
+          steps.add(content);
+        }
+      }
+    }
+    
+    return steps.isNotEmpty 
+        ? steps.join(' Then, ')
+        : 'I can help you break this down into manageable steps.';
+  }
+
+  /// Analyze context for insights
+  String _analyzeContext(String context) {
+    final lines = context.split('\n').where((line) => line.trim().isNotEmpty);
+    
+    if (lines.length <= 1) {
+      return 'The available information is limited.';
+    }
+    
+    return 'There are ${lines.length} relevant pieces of information that suggest a pattern or trend worth considering.';
+  }
+
+  /// Generate insights from similar queries
+  String _generateInsights(List<Map<String, Object?>> similarQueries) {
+    if (similarQueries.isEmpty) return '';
+
+    final insights = <String>[];
+    
+    for (final query in similarQueries) {
+      final score = query['score'] as double;
+      final content = query['document']?.toString() ?? '';
+      
+      if (score > 0.6 && content.length > 20) {
+        final preview = content.length > 60 
+            ? '${content.substring(0, 60)}...'
+            : content;
+        insights.add(preview);
+      }
+    }
+    
+    return insights.isNotEmpty 
+        ? insights.take(2).join(' Also, ')
+        : 'Similar topics have been discussed previously.';
+  }
+
+  /// Calculate confidence based on context availability
+  double _calculateConfidence(List<Map<String, Object?>> similarQueries) {
+    if (similarQueries.isEmpty) return 0.3;
+
+    double totalScore = 0.0;
+    for (final query in similarQueries) {
+      totalScore += query['score'] as double;
+    }
+
+    final averageScore = totalScore / similarQueries.length;
+    
+    // Confidence based on average similarity score
+    if (averageScore > 0.7) return 0.9;
+    if (averageScore > 0.5) return 0.7;
+    if (averageScore > 0.3) return 0.5;
+    return 0.3;
+  }
+
+  /// Store ASR output with enhanced metadata
+  Future<void> storeASROutput({
+    required String text,
+    required double confidence,
+    required DateTime timestamp,
+    Map<String, dynamic>? additionalMetadata,
+  }) async {
+    await _ragService.addDocument(
+      content: text,
+      metadata: {
+        'type': 'asr_output',
+        'confidence': confidence,
+        'timestamp': timestamp.toIso8601String(),
+        'source': 'enhanced_agent_asr',
+        ...?additionalMetadata,
+      },
+    );
+    
+    _logger?.call('🎤 Stored ASR: ${_truncate(text)}');
+  }
+
+  /// Store OCR output with enhanced metadata
+  Future<void> storeOCROutput({
+    required String text,
+    required double confidence,
+    required DateTime timestamp,
+    Map<String, dynamic>? additionalMetadata,
+  }) async {
+    await _ragService.addDocument(
+      content: text,
+      metadata: {
+        'type': 'ocr_output',
+        'confidence': confidence,
+        'timestamp': timestamp.toIso8601String(),
+        'source': 'enhanced_agent_ocr',
+        ...?additionalMetadata,
+      },
+    );
+    
+    _logger?.call('👁️ Stored OCR: ${_truncate(text)}');
+  }
+
+  /// Get memory statistics
+  Future<Map<String, dynamic>> getMemoryStatistics() async {
+    final ragStats = await _ragService.getStatistics();
+    
+    return {
+      ...ragStats,
+      'agentService': 'enhanced_agent',
+      'isInitialized': _isInitialized,
+    };
+  }
+
+  /// Search memory with advanced options
+  Future<List<Map<String, Object?>>> searchMemory({
+    required String query,
+    int limit = 10,
+    double threshold = 0.3,
+    String? contentType,
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    final metadataFilter = <String, dynamic>{};
+    
+    if (contentType != null) {
+      metadataFilter['type'] = contentType;
+    }
+
+    final results = await _ragService.semanticSearch(
+      query: query,
+      limit: limit,
+      similarityThreshold: threshold,
+      metadataFilter: metadataFilter.isNotEmpty ? metadataFilter : null,
+      hybridSearch: true,
+    );
+
+    // Filter by date range if specified
+    if (fromDate != null || toDate != null) {
+      return results.where((result) {
+        final metadata = result['metadata'] as Map<String, dynamic>?;
+        final timestampStr = metadata?['timestamp'] ?? metadata?['addedAt'];
+        
+        if (timestampStr == null) return false;
+        
+        try {
+          final timestamp = DateTime.parse(timestampStr);
+          if (fromDate != null && timestamp.isBefore(fromDate)) return false;
+          if (toDate != null && timestamp.isAfter(toDate)) return false;
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }).toList();
+    }
+
+    return results;
+  }
+
+  /// Truncate text for logging
+  String _truncate(String text, {int maxLength = 50}) {
+    if (text.length <= maxLength) return text;
+    return '${text.substring(0, maxLength)}...';
+  }
+
+  /// Check if service is ready
+  bool get isReady => _isInitialized;
+
+  /// Dispose resources
+  void dispose() {
+    _isInitialized = false;
+    _logger?.call('🧹 Enhanced Agent Service disposed');
+  }
+}
+
+/// Query types for response generation
+enum QueryType {
+  factual,
+  conversational,
+  procedural,
+  analytical,
+}
+
+/// Enhanced Agent Output model
+class AgentOutput {
+  final String query;
+  final String response;
+  final String relevantContext;
+  final double confidence;
+  final Duration processingTime;
+  final DateTime timestamp;
+  final Map<String, dynamic> metadata;
+
+  AgentOutput({
+    required this.query,
+    required this.response,
+    required this.relevantContext,
+    required this.confidence,
+    required this.processingTime,
+    required this.timestamp,
+    this.metadata = const {},
+  });
+
+  Map<String, dynamic> toJson() => {
+    'query': query,
+    'response': response,
+    'relevantContext': relevantContext,
+    'confidence': confidence,
+    'processingTimeMs': processingTime.inMilliseconds,
+    'timestamp': timestamp.toIso8601String(),
+    'metadata': metadata,
+  };
+
+  @override
+  String toString() => 'AgentOutput(query: $query, confidence: $confidence)';
+}

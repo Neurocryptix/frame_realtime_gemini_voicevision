@@ -70,21 +70,25 @@ dependencies:
   # HTTP client for local LLM communication
   http: ^1.2.0
   
-  # TODO: Re-add when flutter_gemma API is verified and tested
-  # flutter_gemma: ^0.10.4
+  # On-device agentic LLM using Gemma Nano
+  flutter_gemma: ^0.10.4
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # GEMINI AI (For conversation, not embeddings)
+  # GEMINI AI (Keep existing for Frame-to-Gemini streaming - UNCHANGED)
   # ═══════════════════════════════════════════════════════════════════════════
   
   google_generative_ai: ^0.4.3
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # OBJECTBOX (Keep stable version)
+  # GOOGLE AI EDGE RAG (Pure Google AI Edge implementation)
   # ═══════════════════════════════════════════════════════════════════════════
   
-  objectbox: ^4.0.0                   # Keep your existing version
-  objectbox_flutter_libs: any
+  mediapipe_core: ^0.0.1
+  mediapipe_genai: ^0.0.1            # Official Google AI Edge RAG
+  
+  # Remove ObjectBox - replaced by Google AI Edge RAG
+  # objectbox: ^4.0.0                   
+  # objectbox_flutter_libs: any
 
   # ═══════════════════════════════════════════════════════════════════════════
   # UTILITIES (Keep your versions)
@@ -138,6 +142,7 @@ flutter:
     - assets/frame_app.lua
     
     
-    # ═══ MOBILEBERT MODEL & VOCABULARY ═══
+    # ═══ ON-DEVICE ML MODELS & ASSETS ═══
     - assets/mobilebert_embedding.tflite
     - assets/vocab.txt
+    # Gemma 3 models will be downloaded automatically through Kaggle authentication

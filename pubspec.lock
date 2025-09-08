@@ -41,6 +41,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.13.0"
+  background_downloader:
+    dependency: transitive
+    description:
+      name: background_downloader
+      sha256: c59bff0b66a6704bed8bfb09c67571df88167906e0f5543a722373b3d180a743
+      url: "https://pub.dev"
+    source: hosted
+    version: "9.2.3"
   bluez:
     dependency: transitive
     description:
@@ -137,6 +145,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.4"
+  cli_config:
+    dependency: transitive
+    description:
+      name: cli_config
+      sha256: "65c7830649e1f8247660f1b783effb460255d6e2c1ac94eb823cf1f84e59b288"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.2"
   clock:
     dependency: transitive
     description:
@@ -201,6 +217,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.11"
+  equatable:
+    dependency: transitive
+    description:
+      name: equatable
+      sha256: "567c64b3cb4cf82397aac55f4f0cbd3ca20d77c6c03bedbc4ceaddc08904aef7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.7"
   fake_async:
     dependency: transitive
     description:
@@ -302,6 +326,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "9.1.0"
+  flutter_gemma:
+    dependency: "direct main"
+    description:
+      name: flutter_gemma
+      sha256: "6ff3aabceca7be79d3dd8a96b9d7255a75dc7ce0a695504bd9c10a82d958e925"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.10.4"
   flutter_lints:
     dependency: "direct dev"
     description:
@@ -448,6 +480,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.9.0"
+  large_file_handler:
+    dependency: transitive
+    description:
+      name: large_file_handler
+      sha256: c2ecaf552e8039119bbe3a094d15aecbafe833899f30b2dcfbb513eddf76b36f
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.1"
   leak_tracker:
     dependency: transitive
     description:
@@ -504,6 +544,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.11.1"
+  mediapipe_core:
+    dependency: "direct main"
+    description:
+      name: mediapipe_core
+      sha256: "94979453c4d2123989943a30fb6d55b6ee966806273c52ec1a23bfd7e561fb23"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.1"
+  mediapipe_genai:
+    dependency: "direct main"
+    description:
+      name: mediapipe_genai
+      sha256: a6200550bbb3921b64eeb9e3ace77e9a8ada21886a6a057341ea4e77d0bb30b2
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.1"
   meta:
     dependency: transitive
     description:
@@ -520,19 +576,27 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
+  native_assets_cli:
+    dependency: transitive
+    description:
+      name: native_assets_cli
+      sha256: "3119600043214157fb54f4ef05717a82a7858f35625fe767799c60f3039361c8"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.2"
+  native_toolchain_c:
+    dependency: transitive
+    description:
+      name: native_toolchain_c
+      sha256: "26579e00aafdbcccdbe0cb095a1d7e32da6210aa6dc35864f58d11a20ca9942e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.3"
   objectbox:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: objectbox
       sha256: "25c2e24b417d938decb5598682dc831bc6a21856eaae65affbc57cfad326808d"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.3.0"
-  objectbox_flutter_libs:
-    dependency: "direct main"
-    description:
-      name: objectbox_flutter_libs
-      sha256: "574b0233ba79a7159fca9049c67974f790a2180b6141d4951112b20bd146016a"
       url: "https://pub.dev"
     source: hosted
     version: "4.3.0"
@@ -1085,6 +1149,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.3"
+  yaml_edit:
+    dependency: transitive
+    description:
+      name: yaml_edit
+      sha256: fb38626579fb345ad00e674e2af3a5c9b0cc4b9bfb8fd7f7ff322c7c9e62aef5
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.2"
 sdks:
   dart: ">=3.8.0 <4.0.0"
   flutter: ">=3.27.0"

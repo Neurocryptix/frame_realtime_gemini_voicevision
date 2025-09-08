@@ -8,7 +8,7 @@ class Document {
   String textContent;
 
   @Property(type: PropertyType.floatVector)
-  @HnswIndex(dimensions: 384)
+  @HnswIndex(dimensions: 384)  // Keep at 384 to support both MobileBERT and fallback embeddings
   List<double>? embedding;
 
   @Property(type: PropertyType.date)
