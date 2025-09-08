@@ -13,7 +13,10 @@ void main() {
     
     void testLogger(String message) {
       testLogs.add(message);
-      print('[AI_EDGE_TEST] $message');
+      // Test logging - using addTearDown to avoid print lint warnings
+      addTearDown(() {
+        // Messages logged to testLogs for verification
+      });
     }
 
     setUp(() {
@@ -36,7 +39,7 @@ void main() {
       expect(stats['model'], equals('gemma-3n'));
       expect(stats['processingMode'], equals('on_device'));
       
-      print('✅ AI Edge RAG service created successfully');
+      expect(stats.isNotEmpty, isTrue); // Verify stats are generated
     });
 
     test('AI Edge LLM Service Configuration', () {
@@ -48,7 +51,7 @@ void main() {
       expect(stats['gemma3Compatible'], isTrue);
       expect(stats['backendType'], equals('mediapipe_genai'));
       
-      print('✅ AI Edge LLM service configured correctly');
+      expect(stats['processingMode'], isNotNull); // Verify processing mode set
     });
 
     test('Document Storage (Mock Mode)', () async {
@@ -64,7 +67,7 @@ void main() {
       expect(testDoc.content.isNotEmpty, isTrue);
       expect(testDoc.metadata['type'], equals('test'));
       
-      print('✅ Document model works correctly');
+      expect(testDoc.timestamp, isNotNull); // Verify timestamp is set
     });
 
     test('AI Edge Configuration Validation', () {
@@ -83,7 +86,7 @@ void main() {
       expect(ragStats['processingMode'], equals('on_device'));
       expect(llmStats['processingMode'], equals('on_device_ai_edge'));
       
-      print('✅ AI Edge configuration validation passed');
+      expect(llmStats['backendType'], equals('mediapipe_genai')); // Verify backend
     });
 
     test('Service Integration Points', () {
@@ -96,7 +99,7 @@ void main() {
       expect(agentService.isReady, isFalse); // Not initialized yet
       expect(agentService.ragService, equals(ragService));
       
-      print('✅ Service integration points work correctly');
+      expect(agentService, isNotNull); // Verify service created
     });
 
     test('Error Handling', () async {
@@ -111,7 +114,7 @@ void main() {
         throwsException,
       );
       
-      print('✅ Error handling works correctly');
+      expect(ragService, isNotNull); // Verify service exists for error testing
     });
 
     test('Statistics Generation', () {
@@ -127,10 +130,10 @@ void main() {
       expect(llmStats.containsKey('modelName'), isTrue);
       expect(llmStats.containsKey('aiEdgeEnabled'), isTrue);
       
-      print('✅ Statistics generation works correctly');
-      print('   RAG System: ${ragStats['ragSystem']}');
-      print('   Model: ${ragStats['model']}');
-      print('   Processing Mode: ${ragStats['processingMode']}');
+      // Verify all stats are properly typed
+      expect(ragStats['ragSystem'], isA<String>());
+      expect(ragStats['model'], isA<String>());
+      expect(ragStats['processingMode'], isA<String>());
     });
 
     test('Model URL Validation', () async {
@@ -141,10 +144,10 @@ void main() {
       // This will fail without actual model, but should handle gracefully
       try {
         await ragService.initialize(modelUrl: testUrl, downloadModel: false);
-        print('⚠️ Model initialization attempted');
+        // Model initialization attempted (expected behavior)
       } catch (e) {
         expect(e.toString().contains('not found'), isTrue);
-        print('✅ Model validation works correctly');
+        expect(e, isNotNull); // Error expected without model
       }
     });
 
@@ -166,7 +169,7 @@ void main() {
       expect(json['query'], equals('test query'));
       expect(json['processingTimeMs'], equals(100));
       
-      print('✅ AI Edge response models work correctly');
+      expect(json['metadata'], isA<Map<String, dynamic>>()); // Verify metadata serialization
     });
   });
 
@@ -197,10 +200,11 @@ void main() {
       expect(llmStats['aiEdgeEnabled'], isTrue);
       expect(agentStats['integration'], equals('pure_google_ai_edge'));
 
-      print('✅ End-to-end service creation successful');
-      print('   Services: RAG, LLM, Agent');
-      print('   Backend: MediaPipe GenAI');
-      print('   Model: Gemma 3');
+      // Verify comprehensive system creation
+      expect(logs, isNotEmpty); // Verify logging worked
+      expect(ragStats.isNotEmpty, isTrue);
+      expect(llmStats.isNotEmpty, isTrue);
+      expect(agentStats.isNotEmpty, isTrue);
 
       // Cleanup
       ragService.dispose();
@@ -216,7 +220,7 @@ void main() {
       expect(ragService, isNotNull);
       expect(llmService, isNotNull);
 
-      print('✅ Platform support check passed');
+      expect(ragService.runtimeType.toString(), contains('AIEdgeRagService'));
 
       ragService.dispose();
       llmService.dispose();

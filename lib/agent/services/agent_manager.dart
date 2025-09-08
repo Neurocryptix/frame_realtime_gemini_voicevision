@@ -288,7 +288,7 @@ class AgentManager {
 
     if (_vectorDbService != null) {
       try {
-        await _vectorDbService!.addTextWithEmbedding(
+        await _vectorDbService.addTextWithEmbedding(
           content: content,
           metadata: {
             'source': 'agent',
@@ -334,7 +334,7 @@ class AgentManager {
 
     if (_vectorDbService != null) {
       try {
-        final results = await _vectorDbService!.queryText(
+        final results = await _vectorDbService.queryText(
           queryText: query,
           topK: topK,
           threshold: 0.3,

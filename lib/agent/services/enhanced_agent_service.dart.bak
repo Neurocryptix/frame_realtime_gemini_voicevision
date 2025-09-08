@@ -355,7 +355,7 @@ class EnhancedAgentService {
 
   /// Get memory statistics
   Future<Map<String, dynamic>> getMemoryStatistics() async {
-    final ragStats = await _ragService.getStatistics();
+    final ragStats = _ragService.getStatistics();
     
     return {
       ...ragStats,

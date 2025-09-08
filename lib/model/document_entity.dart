@@ -1,17 +1,19 @@
-import 'package:objectbox/objectbox.dart';
+// NOTE: ObjectBox dependency disabled - migrating to Google AI Edge RAG
+// import 'package:objectbox/objectbox.dart';
 
-@Entity()
+// Legacy ObjectBox entity - will be replaced by AI Edge RAG documents
+// @Entity()
 class Document {
-  @Id()
+  // @Id()
   int id = 0;
 
   String textContent;
 
-  @Property(type: PropertyType.floatVector)
-  @HnswIndex(dimensions: 384)  // Keep at 384 to support both MobileBERT and fallback embeddings
+  // @Property(type: PropertyType.floatVector)
+  // @HnswIndex(dimensions: 384)  // Keep at 384 to support both MobileBERT and fallback embeddings
   List<double>? embedding;
 
-  @Property(type: PropertyType.date)
+  // @Property(type: PropertyType.date)
   DateTime? createdAt;
 
   String? metadata;

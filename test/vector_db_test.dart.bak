@@ -51,7 +51,7 @@ void main() {
     tearDown(() async {
       if (objectBoxAvailable && vectorDb != null) {
         await vectorDb!.clearAll();
-        await vectorDb!.dispose();
+        vectorDb!.dispose();
       }
     });
 

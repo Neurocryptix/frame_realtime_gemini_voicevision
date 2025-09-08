@@ -13,7 +13,6 @@ import 'package:frame_msg/tx/code.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 // import 'package:google_generative_ai/google_generative_ai.dart'; // Not needed - using WebSocket realtime API
-import 'package:path_provider/path_provider.dart';
 
 // ObjectBox imports
 import 'package:frame_realtime_gemini_voicevision/services/vector_db_service.dart';
@@ -28,7 +27,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 // Agent system imports
 import 'package:frame_realtime_gemini_voicevision/agent/core/agent_core.dart';
-import 'package:frame_realtime_gemini_voicevision/agent/services/agent_vector_service.dart';
+// import 'package:frame_realtime_gemini_voicevision/agent/services/agent_vector_service.dart'; // Legacy - using AI Edge RAG
 import 'package:frame_realtime_gemini_voicevision/agent/services/agent_manager.dart';
 // import 'package:frame_realtime_gemini_voicevision/agent/ui/agent_demo_widget.dart'; // Unused - using integrated interface
 
@@ -154,7 +153,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
   // Agent system
   AgentCore? _agentCore;
-  AgentVectorService? _agentVectorService;
+  // AgentVectorService? _agentVectorService; // Legacy - using AI Edge RAG
   AgentManager? _agentManager;
 
   StreamSubscription<Uint8List>? _audioSubscription;
@@ -216,7 +215,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     }
     _vectorDb?.dispose();
     _agentCore?.dispose();
-    _agentVectorService?.dispose();
+    // _agentVectorService?.dispose(); // Legacy - using AI Edge RAG
     _agentManager?.dispose();
     super.dispose();
   }
@@ -261,22 +260,11 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
         return;
       }
 
-      // Initialize agent vector service
-      _agentVectorService = AgentVectorService(
-        vectorDbService: _vectorDb!,
-        logger: _logEvent,
-      );
+      // Legacy agent vector service replaced by AI Edge RAG
 
-      final vectorServiceReady = await _agentVectorService!.initialize();
-      if (!vectorServiceReady) {
-        _logEvent('⚠️ Agent vector service initialization failed');
-        return;
-      }
-
-      // Initialize agent core
+      // Initialize agent core (now without vector service dependency)
       _agentCore = AgentCore(
         logger: _logEvent,
-        vectorService: _agentVectorService!,
       );
 
       final agentReady = await _agentCore!.initialize();
@@ -290,7 +278,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
           '⚠️ Agent initialization failed (continuing without agent): $e');
       // Continue without agent - graceful degradation
       _agentCore = null;
-      _agentVectorService = null;
+      // _agentVectorService = null; // Legacy - using AI Edge RAG
     }
   }
 

@@ -22,7 +22,7 @@ class RagMigrationService {
   ) async {
     try {
       // Check if new service has documents
-      final newStats = await newService.getStatistics();
+      final newStats = newService.getStatistics();
       final newDocs = newStats['totalDocuments'] ?? 0;
       
       // Check if old service has documents
@@ -93,7 +93,7 @@ class RagMigrationService {
       }
 
       // Step 4: Batch migrate documents with enhanced metadata
-      final batchSize = 10; // Process in batches to avoid overwhelming the API
+      const batchSize = 10; // Process in batches to avoid overwhelming the API
       
       for (int i = 0; i < oldDocuments.length; i += batchSize) {
         final batch = oldDocuments.skip(i).take(batchSize).toList();
@@ -196,7 +196,7 @@ class RagMigrationService {
       _emit('🔍 Verifying migration...');
       
       final oldStats = await oldService.getStats();
-      final newStats = await newService.getStatistics();
+      final newStats = newService.getStatistics();
       
       final oldDocs = oldStats['totalDocuments'] ?? 0;
       final newDocs = newStats['totalDocuments'] ?? 0;
@@ -225,7 +225,7 @@ class RagMigrationService {
       _emit('📋 Generating migration report...');
       
       final oldStats = await oldService.getStats();
-      final newStats = await newService.getStatistics();
+      final newStats = newService.getStatistics();
       
       _emit('═══════════════════════════════════════');
       _emit('📊 MIGRATION REPORT');

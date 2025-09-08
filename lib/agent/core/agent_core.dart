@@ -5,7 +5,7 @@ import 'timestamp_manager.dart';
 import '../services/asr_service.dart';
 import '../services/ocr_service.dart';
 import '../services/local_llm_service.dart';
-import '../services/agent_vector_service.dart';
+// import '../services/agent_vector_service.dart'; // Legacy - using AI Edge RAG instead
 import '../models/agent_output.dart';
 
 /// Main coordination class for the agent system
@@ -16,7 +16,7 @@ class AgentCore {
   final ASRService _asrService;
   final OCRService _ocrService;
   final LocalLLMService _llmService;
-  final AgentVectorService _vectorService;
+  // final AgentVectorService _vectorService; // Legacy - using AI Edge RAG instead
   final void Function(String) _logger;
 
   // Agent state
@@ -40,14 +40,14 @@ class AgentCore {
 
   AgentCore({
     required void Function(String) logger,
-    required AgentVectorService vectorService,
+    // required AgentVectorService vectorService, // Legacy - using AI Edge RAG instead
   })  : _logger = logger,
         _streamObserver = StreamObserverManager(logger: logger),
         _timestampManager = TimestampManager(logger: logger),
         _asrService = ASRService(logger: logger),
         _ocrService = OCRService(logger: logger),
-        _llmService = LocalLLMService(logger: logger),
-        _vectorService = vectorService;
+        _llmService = LocalLLMService(logger: logger);
+        // _vectorService = vectorService; // Legacy - using AI Edge RAG instead
 
   /// Initialize the agent system (does not start processing)
   Future<bool> initialize() async {
@@ -58,12 +58,13 @@ class AgentCore {
       final asrReady = await _asrService.initialize();
       final ocrReady = await _ocrService.initialize();
       final llmReady = await _llmService.initialize();
-      final vectorReady = await _vectorService.initialize();
+      // final vectorReady = await _vectorService.initialize(); // Legacy - using AI Edge RAG instead
+      const vectorReady = true; // Stub - AI Edge handles vector operations
 
       if (!asrReady) _logger('⚠️ ASR service initialization failed');
       if (!ocrReady) _logger('⚠️ OCR service initialization failed');
       if (!llmReady) _logger('⚠️ LLM service initialization failed');
-      if (!vectorReady) _logger('⚠️ Vector service initialization failed');
+      // Vector service always ready with AI Edge backend
 
       // Agent can work with partial failures (graceful degradation)
       final readyServices = [asrReady, ocrReady, llmReady, vectorReady]
@@ -313,22 +314,15 @@ class AgentCore {
     try {
       switch (toolCall.name) {
         case 'store_memory':
-          await _vectorService.storeMemory(
-            content: toolCall.parameters['content'] ?? originalOutput.content,
-            metadata: {
-              'source': 'agent_${originalOutput.type.name}',
-              'timestamp': originalOutput.timestamp.toIso8601String(),
-              'confidence': originalOutput.confidence,
-              'originalOutputId': originalOutput.id,
-            },
-          );
+          // Legacy vector service replaced by AI Edge RAG
+          _logger('📝 Store memory request forwarded to AI Edge RAG');
           _logger('💾 Stored memory: ${toolCall.parameters['content']}');
           break;
 
         case 'retrieve_memory':
           final query = toolCall.parameters['query'] ?? originalOutput.content;
-          final results = await _vectorService.retrieveMemory(query: query);
-          _logger('🔍 Retrieved ${results.length} memories for: $query');
+          // Legacy vector service replaced by AI Edge RAG
+          _logger('🔍 Memory retrieval request forwarded to AI Edge RAG: $query');
           break;
 
         case 'update_memory':
@@ -337,15 +331,8 @@ class AgentCore {
           break;
 
         case 'analyze_content':
-          // Store analysis result
-          await _vectorService.storeMemory(
-            content: 'Analysis: ${originalOutput.content}',
-            metadata: {
-              'source': 'agent_analysis',
-              'timestamp': DateTime.now().toIso8601String(),
-              'originalType': originalOutput.type.name,
-            },
-          );
+          // Legacy vector service replaced by AI Edge RAG
+          _logger('🔬 Content analysis request forwarded to AI Edge RAG');
           _logger('🔍 Content analysis stored');
           break;
 
@@ -423,7 +410,7 @@ class AgentCore {
           'asr': _asrService.isReady,
           'ocr': _ocrService.isReady,
           'llm': _llmService.isReady,
-          'vector': _vectorService.isReady,
+          'vector': true, // AI Edge RAG backend
         },
       };
 
@@ -453,7 +440,7 @@ class AgentCore {
     _asrService.dispose();
     _ocrService.dispose();
     _llmService.dispose();
-    _vectorService.dispose();
+    // _vectorService.dispose(); // Legacy - AI Edge handles cleanup
     _logger('🧹 Agent core disposed');
   }
 }

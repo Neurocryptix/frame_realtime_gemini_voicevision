@@ -33,7 +33,7 @@ class _EnhancedRagIntegrationExampleState extends State<EnhancedRagIntegrationEx
   bool _isInitializing = false;
 
   bool _isReady = false;
-  List<String> _logs = [];
+  final List<String> _logs = [];
   
   // Controllers
   final _queryController = TextEditingController();
@@ -240,7 +240,7 @@ class _EnhancedRagIntegrationExampleState extends State<EnhancedRagIntegrationEx
   Future<void> _updateStats() async {
     try {
       if (_ragService != null && _agentService != null) {
-        final ragStats = await _ragService!.getStatistics();
+        final ragStats = _ragService!.getStatistics();
         final agentStats = await _agentService!.getMemoryStatistics();
         
         setState(() {
