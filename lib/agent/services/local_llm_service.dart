@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter/services.dart';
 import '../models/agent_output.dart';
+import './ai_edge_llm_service.dart';
 
 /// Local LLM service with tool calling capabilities
 /// CRITICAL: This is agent-only and NEVER affects the Gemini pipeline
@@ -22,9 +22,9 @@ class LocalLLMService {
   // HTTP client for local LLM API calls (agent-only)
   late http.Client _httpClient;
 
-  // Gemma Nano for on-device agentic processing
-  InferenceModel? _gemmaModel; // FlutterGemma model instance
-  bool _gemmaInitialized = false;
+  // AI Edge LLM for on-device agentic processing
+  AIEdgeLLMServiceImpl? _aiEdgeLLM; // AI Edge LLM service instance
+  bool _aiEdgeInitialized = false;
   bool _modelDownloadInProgress = false;
   String? _modelPath;
 
@@ -46,18 +46,18 @@ class LocalLLMService {
     try {
       _logger?.call('🤖 Initializing Local LLM service (agent-only)...');
 
-      // Initialize Gemma Nano for on-device processing. No fallback.
-      final hasGemmaNano = await _initializeGemmaNano();
+      // Initialize AI Edge LLM for on-device processing. No fallback.
+      final hasAIEdge = await _initializeAIEdge();
 
-      if (hasGemmaNano) {
-        _useGemmaNano = true;
+      if (hasAIEdge) {
+        _useGemmaNano = true; // Keep variable name for compatibility
         _isReady = true;
-        _logger?.call('✅ Gemma Nano initialized for on-device agentic processing');
+        _logger?.call('✅ AI Edge LLM initialized for on-device agentic processing');
         return true;
       } else {
-        // If Gemma Nano fails, the entire service fails.
+        // If AI Edge fails, the entire service fails.
         _isReady = false;
-        _logger?.call('❌ Gemma Nano initialization failed. The on-device agent will not be available.');
+        _logger?.call('❌ AI Edge LLM initialization failed. The on-device agent will not be available.');
         return false;
       }
     } catch (e) {
@@ -67,13 +67,13 @@ class LocalLLMService {
     }
   }
 
-  /// Initialize Gemma Nano for on-device agentic processing
-  Future<bool> _initializeGemmaNano() async {
+  /// Initialize AI Edge LLM for on-device agentic processing
+  Future<bool> _initializeAIEdge() async {
     try {
-      _logger?.call('🧠 Initializing Gemma Nano for on-device processing...');
+      _logger?.call('🧠 Initializing AI Edge LLM for on-device processing...');
 
       if (!Platform.isAndroid) {
-        _logger?.call('⚠️ Gemma Nano is primarily supported on Android, skipping...');
+        _logger?.call('⚠️ AI Edge LLM is primarily supported on Android, skipping...');
         return false;
       }
 
@@ -89,12 +89,12 @@ class LocalLLMService {
           return false;
         }
       } else {
-        _logger?.call('✅ Gemma Nano model already exists in app directory.');
+        _logger?.call('✅ AI Edge model already exists in app directory.');
       }
 
-      return await _initializeGemmaModel();
+      return await _initializeAIEdgeModel();
     } catch (e) {
-      _logger?.call('❌ Gemma Nano initialization failed: $e');
+      _logger?.call('❌ AI Edge LLM initialization failed: $e');
       return false;
     }
   }
@@ -123,22 +123,37 @@ class LocalLLMService {
     }
   }
 
-  /// Initialize Gemma model after installation
-  Future<bool> _initializeGemmaModel() async {
+  /// Initialize AI Edge model after installation
+  Future<bool> _initializeAIEdgeModel() async {
     try {
-      _logger?.call('🔧 Initializing Gemma Nano model instance...');
-      // NOTE: Model initialization will be handled by AI Edge setup process
-      // This service will integrate with AI Edge RAG system instead
-      _logger?.call('📋 Model will be initialized through AI Edge setup on first launch');
+      _logger?.call('🔧 Initializing AI Edge LLM model instance...');
       
-      // For now, mark as initialized to allow the service to function
-      // The actual model will be managed by AIEdgeLLMService
-      _gemmaInitialized = true;
-      _logger?.call('✅ Local LLM service ready (will use AI Edge backend)');
-      return true;
+      // Initialize AI Edge LLM service
+      _aiEdgeLLM = AIEdgeLLMServiceImpl(logger: _logger);
+      
+      if (_modelPath != null) {
+        final success = await _aiEdgeLLM!.initialize(
+          modelPath: _modelPath!,
+          maxTokens: 512,
+          temperature: 0.8,
+        );
+        
+        if (success) {
+          _aiEdgeInitialized = true;
+          _logger?.call('✅ AI Edge LLM service ready');
+          return true;
+        } else {
+          _logger?.call('❌ AI Edge LLM initialization failed');
+          _aiEdgeLLM = null;
+          return false;
+        }
+      } else {
+        _logger?.call('❌ Model path not set');
+        return false;
+      }
     } catch (e) {
-      _logger?.call('❌ Model initialization failed: $e');
-      _gemmaModel = null;
+      _logger?.call('❌ AI Edge model initialization failed: $e');
+      _aiEdgeLLM = null;
       return false;
     }
   }
@@ -154,27 +169,27 @@ class LocalLLMService {
     required String context,
     required List<String> availableTools,
   }) async {
-    if (!_isReady || !_useGemmaNano || !_gemmaInitialized) {
+    if (!_isReady || !_useGemmaNano || !_aiEdgeInitialized) {
       _logger?.call('⚠️ On-device agent not ready. Cannot process.');
       // Throw an exception to be caught by the UI layer
-      throw Exception('Gemma Nano agent is not initialized.');
+      throw Exception('AI Edge LLM agent is not initialized.');
     }
 
     final startTime = DateTime.now();
 
-    // Process directly with Gemma Nano. Any exception will be propagated.
-    final response = await _gemmaNanoProcess(context, availableTools);
+    // Process directly with AI Edge LLM. Any exception will be propagated.
+    final response = await _aiEdgeProcess(context, availableTools);
     
     final processingTime = DateTime.now().difference(startTime);
     _logger?.call(
-        '🧠 Agent LLM (GEMMA_NANO) processed in ${processingTime.inMilliseconds}ms');
+        '🧠 Agent LLM (AI_EDGE) processed in ${processingTime.inMilliseconds}ms');
 
     return LLMResponse(
       content: response['content'] ?? '',
       toolCalls: _parseToolCalls(response['tool_calls'] ?? []),
       processingTime: processingTime,
       metadata: {
-        'modelType': 'gemma_nano',
+        'modelType': 'ai_edge',
         'modelName': _modelName,
         'contextLength': context.length,
         'availableTools': availableTools,
@@ -182,28 +197,26 @@ class LocalLLMService {
     );
   }
 
-  /// Gemma Nano on-device processing for agentic decision making
-  Future<Map<String, dynamic>> _gemmaNanoProcess(
+  /// AI Edge LLM on-device processing for agentic decision making
+  Future<Map<String, dynamic>> _aiEdgeProcess(
       String context, List<String> availableTools) async {
-    if (!_gemmaInitialized || _gemmaModel == null) {
-      throw Exception('Gemma Nano not initialized');
+    if (!_aiEdgeInitialized || _aiEdgeLLM == null) {
+      throw Exception('AI Edge LLM not initialized');
     }
 
     final systemPrompt = _buildAgenticSystemPrompt(availableTools);
     final fullPrompt = '$systemPrompt\n\nUser Context: $context\n\nAnalyze this context and decide what actions to take. Respond with your reasoning and any tool calls needed:';
 
-    _logger?.call('🧠 Processing with Gemma Nano: ${_truncateForLog(context)}');
+    _logger?.call('🧠 Processing with AI Edge LLM: ${_truncateForLog(context)}');
 
-    // Create a chat session and get response
-    final chat = await _gemmaModel!.createChat();
-    await chat.addQueryChunk(Message.text(text: fullPrompt, isUser: true));
-    final response = await chat.generateChatResponse();
+    // Get response from AI Edge LLM service
+    final response = await _aiEdgeLLM!.generateResponse(fullPrompt);
 
-    if (response is TextResponse && response.token.isNotEmpty) {
-      _logger?.call('✅ Gemma Nano response: ${_truncateForLog(response.token)}');
-      return _parseRealLLMResponse(response.token);
+    if (response != null && response.isNotEmpty) {
+      _logger?.call('✅ AI Edge LLM response: ${_truncateForLog(response)}');
+      return _parseRealLLMResponse(response);
     } else {
-      throw Exception('Empty response from Gemma Nano');
+      throw Exception('Empty response from AI Edge LLM');
     }
   }
 
@@ -569,9 +582,9 @@ Respond with your analysis and tool calls:''';
     String modelType;
     int maxContextLength;
 
-    if (_useGemmaNano && _gemmaInitialized) {
-      modelType = 'gemma_nano';
-      maxContextLength = 2048; // Gemma Nano context window
+    if (_useGemmaNano && _aiEdgeInitialized) {
+      modelType = 'ai_edge_llm';
+      maxContextLength = 2048; // AI Edge LLM context window
     } else if (_useLocalApi) {
       modelType = 'local_llm';
       maxContextLength = 4096; // Typical local LLM
@@ -584,7 +597,7 @@ Respond with your analysis and tool calls:''';
       'isReady': _isReady,
       'modelType': modelType,
       'useGemmaNano': _useGemmaNano,
-      'gemmaInitialized': _gemmaInitialized,
+      'aiEdgeInitialized': _aiEdgeInitialized,
       'modelDownloadInProgress': _modelDownloadInProgress,
       'modelPath': _modelPath,
       'useLocalApi': _useLocalApi,
@@ -602,36 +615,17 @@ Respond with your analysis and tool calls:''';
     try {
       final modelFile = File(_modelPath ?? '');
       final modelInstalled = await modelFile.exists();
-      // TODO: Re-enable when flutter_gemma API is verified
-      // final modelManager = FlutterGemmaPlugin.instance.modelManager;
+      // AI Edge models are managed through MediaPipe GenAI
 
       Map<String, dynamic> status = {
         'modelInstalled': modelInstalled,
         'modelPath': _modelPath,
         'modelFileName': _modelFileName,
         'installInProgress': _modelDownloadInProgress,
-        'gemmaInitialized': _gemmaInitialized,
+        'aiEdgeInitialized': _aiEdgeInitialized,
       };
 
-      // TODO: Re-enable when flutter_gemma API is verified
-      // Get installed models info
-      // try {
-      //   final installedModels = await modelManager.getInstalledModels();
-      //   status['installedModelsCount'] = installedModels.length;
-      //
-      //   if (installedModels.isNotEmpty) {
-      //     status['installedModels'] = installedModels.map((model) => {
-      //       'path': model.path,
-      //       'type': model.type.toString(),
-      //       'size': model.sizeInBytes,
-      //     }).toList();
-      //   }
-      // } catch (e) {
-      //   status['modelInfoError'] = e.toString();
-      // }
-
-      status['note'] =
-          'Model info disabled pending flutter_gemma API verification';
+      status['note'] = 'AI Edge models managed through MediaPipe GenAI';
 
       return status;
     } catch (e) {
@@ -646,34 +640,16 @@ Respond with your analysis and tool calls:''';
   /// Force reinstallation of Gemma Nano model (for updates or corruption recovery)
   Future<bool> forceModelReinstall() async {
     try {
-      _logger?.call('🔄 Forcing Gemma Nano model reinstallation...');
-
-      // TODO: Re-enable when flutter_gemma API is verified
-      // final modelManager = FlutterGemmaPlugin.instance.modelManager;
-
-      // TODO: Re-enable when flutter_gemma API is verified
-      // Clean up existing models
-      // try {
-      //   final installedModels = await modelManager.getInstalledModels();
-      //   for (final model in installedModels) {
-      //     await modelManager.uninstallModel(model);
-      //     _logger?.call('🗑️ Uninstalled model: ${model.path}');
-      //   }
-      // } catch (e) {
-      //   _logger?.call('⚠️ Error during cleanup: $e');
-      // }
-
-      _logger?.call('⚠️ Model cleanup disabled pending API verification');
+      _logger?.call('🔄 Forcing AI Edge model reinstallation...');
 
       // Reset state
-      _gemmaInitialized = false;
-      // TODO: Re-enable when flutter_gemma API is verified
-      // _gemmaModel?.dispose();
-      _gemmaModel = null;
+      _aiEdgeInitialized = false;
+      _aiEdgeLLM?.dispose();
+      _aiEdgeLLM = null;
       _modelPath = null;
 
       // Trigger fresh installation and initialization
-      return await _initializeGemmaNano();
+      return await _initializeAIEdge();
     } catch (e) {
       _logger?.call('❌ Force reinstallation failed: $e');
       return false;
@@ -684,21 +660,21 @@ Respond with your analysis and tool calls:''';
   void dispose() {
     _httpClient.close();
 
-    // Clean up Gemma Nano resources
-    if (_gemmaModel != null) {
+    // Clean up AI Edge LLM resources
+    if (_aiEdgeLLM != null) {
       try {
-        _gemmaModel!.close(); // Fire and forget
-        _logger?.call('🧹 Gemma model closed');
+        _aiEdgeLLM!.dispose();
+        _logger?.call('🧹 AI Edge LLM disposed');
       } catch (e) {
-        _logger?.call('⚠️ Error closing Gemma model: $e');
+        _logger?.call('⚠️ Error disposing AI Edge LLM: $e');
       }
-      _gemmaModel = null;
+      _aiEdgeLLM = null;
     }
 
     _isReady = false;
     _useLocalApi = false;
     _useGemmaNano = false;
-    _gemmaInitialized = false;
+    _aiEdgeInitialized = false;
     _logger?.call('🧹 Local LLM service disposed (agent-only)');
   }
 }

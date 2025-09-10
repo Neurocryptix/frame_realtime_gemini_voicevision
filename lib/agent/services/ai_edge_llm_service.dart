@@ -1,135 +1,153 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:mediapipe_genai/mediapipe_genai.dart';
+import '../interfaces/ai_edge_interfaces.dart';
 
-// MediaPipe imports disabled for CI compatibility (requires Flutter master channel)
-// import 'package:mediapipe_genai/mediapipe_genai.dart';
-
-/// AI Edge LLM Service - STUB Implementation for CI Compatibility
-///
-/// This is a simplified stub that provides the LLM interface without MediaPipe dependencies.
-/// For full AI Edge functionality with MediaPipe GenAI, the app requires:
-/// - Flutter master channel
-/// - MediaPipe GenAI package
-/// - Native assets compilation
-class AIEdgeLLMService {
+/// AI Edge LLM Service using MediaPipe GenAI
+/// Implements proper Google AI Edge patterns for on-device LLM inference
+class AIEdgeLLMServiceImpl implements AIEdgeLLMService {
+  LlmInferenceEngine? _llmEngine;
+  bool _isInitialized = false;
   final void Function(String)? _logger;
-  bool _isReady = false;
-  String? _modelPath;
 
-  // Model configuration - Gemma 3 compatible
-  static const String _gemma3ModelName = 'gemma-3n-E2B-it-int4.bin';
-  static const int _maxTokens = 2048;
-  static const double _temperature = 0.7;
+  AIEdgeLLMServiceImpl({void Function(String)? logger}) : _logger = logger;
 
-  AIEdgeLLMService({void Function(String)? logger}) : _logger = logger;
-
-  /// Initialize the AI Edge LLM service (stub)
+  /// Initialize the AI Edge LLM service with MediaPipe GenAI
+  @override
   Future<bool> initialize({
-    String? modelUrl,
-    bool downloadModel = false,
+    required String modelPath,
+    int maxTokens = 512,
+    double temperature = 0.8,
+    double topP = 0.95,
+    int topK = 20,
+    int randomSeed = 0,
   }) async {
     try {
-      _logger?.call('🚀 Initializing AI Edge LLM service (stub mode)');
-      
-      if (downloadModel && modelUrl != null) {
-        _logger?.call('📥 Model download requested: $modelUrl (stub - would download in real implementation)');
-        _modelPath = modelUrl;
+      _logger?.call('🚀 Initializing AI Edge LLM with MediaPipe GenAI...');
+
+      // Verify model file exists
+      final modelFile = File(modelPath);
+      if (!await modelFile.exists()) {
+        _logger?.call('❌ Model file not found: $modelPath');
+        return false;
       }
+
+      // Create LLM inference options following MediaPipe GenAI patterns
+      final options = LlmInferenceOptions.cpu(
+        modelPath: modelPath,
+        cacheDir: '/tmp/mediapipe_cache', // Temporary directory for MediaPipe cache
+        maxTokens: maxTokens,
+        temperature: temperature,
+        topK: topK,
+        randomSeed: randomSeed,
+      );
+
+      // Initialize the LLM inference engine
+      _llmEngine = LlmInferenceEngine(options);
       
-      // Simulate initialization delay
-      await Future.delayed(const Duration(milliseconds: 500));
-      
-      _isReady = true;
-      _logger?.call('✅ AI Edge LLM service ready (stub - MediaPipe disabled for CI)');
-      return true;
-      
+      if (_llmEngine != null) {
+        _isInitialized = true;
+        _logger?.call('✅ AI Edge LLM initialized successfully');
+        return true;
+      } else {
+        _logger?.call('❌ Failed to create LLM inference engine');
+        return false;
+      }
     } catch (e) {
       _logger?.call('❌ AI Edge LLM initialization failed: $e');
       return false;
     }
   }
 
-  /// Generate text response (stub)
-  Future<String> generateText({
-    required String prompt,
-    int? maxTokens,
-    double? temperature,
-  }) async {
-    if (!_isReady) {
-      throw StateError('LLM service not initialized');
+  /// Generate streaming response using MediaPipe GenAI
+  @override
+  Stream<String> generateResponseStream(String prompt) async* {
+    if (!_isInitialized || _llmEngine == null) {
+      _logger?.call('⚠️ AI Edge LLM not initialized');
+      return;
     }
 
-    // Stub response
-    await Future.delayed(const Duration(milliseconds: 300));
-    
-    final response = 'AI Edge LLM response (stub mode): "$prompt"\n\n'
-        'Note: This is a stub implementation. Full MediaPipe GenAI functionality '
-        'requires Flutter master channel and MediaPipe packages.';
-    
-    _logger?.call('🤖 Generated AI Edge LLM response (stub)');
-    return response;
+    try {
+      _logger?.call('🌊 Starting streaming response...');
+      
+      await for (final token in _llmEngine!.generateResponse(prompt)) {
+        if (token.isNotEmpty) {
+          yield token;
+        }
+      }
+    } catch (e) {
+      _logger?.call('❌ Streaming response failed: $e');
+    }
   }
 
-  /// Generate streaming text response (stub)
-  Stream<String> generateTextStream({
-    required String prompt,
-    int? maxTokens,
-    double? temperature,
-  }) async* {
-    if (!_isReady) {
-      throw StateError('LLM service not initialized');
+  /// Generate complete response by collecting stream
+  @override
+  Future<String?> generateResponse(String prompt, {List<String>? stopSequences}) async {
+    if (!_isInitialized || _llmEngine == null) {
+      _logger?.call('⚠️ AI Edge LLM not initialized');
+      return null;
     }
 
-    _logger?.call('🌊 Starting AI Edge LLM streaming (stub)');
-    
-    final chunks = [
-      'AI Edge LLM streaming response (stub mode): ',
-      '"$prompt"\n\n',
-      'Note: This is a stub implementation. ',
-      'Full MediaPipe GenAI functionality ',
-      'requires Flutter master channel and MediaPipe packages.'
-    ];
-    
-    for (final chunk in chunks) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      yield chunk;
+    try {
+      _logger?.call('🧠 Generating response with AI Edge LLM...');
+      
+      final responseBuffer = StringBuffer();
+      await for (final token in _llmEngine!.generateResponse(prompt)) {
+        responseBuffer.write(token);
+        
+        // Check for stop sequences
+        if (stopSequences != null) {
+          final currentResponse = responseBuffer.toString();
+          for (final stopSeq in stopSequences) {
+            if (currentResponse.contains(stopSeq)) {
+              final stopIndex = currentResponse.indexOf(stopSeq);
+              final finalResponse = currentResponse.substring(0, stopIndex);
+              _logger?.call('✅ Response generated with stop sequence');
+              return finalResponse;
+            }
+          }
+        }
+      }
+      
+      final response = responseBuffer.toString();
+      if (response.isNotEmpty) {
+        _logger?.call('✅ Response generated successfully');
+        return response;
+      } else {
+        _logger?.call('⚠️ Empty response from LLM');
+        return null;
+      }
+    } catch (e) {
+      _logger?.call('❌ Response generation failed: $e');
+      return null;
     }
-    
-    _logger?.call('✅ AI Edge LLM streaming completed (stub)');
   }
+
+  /// Check if the service is ready
+  @override
+  bool get isReady => _isInitialized && _llmEngine != null;
 
   /// Get service statistics
+  @override
   Map<String, dynamic> getStatistics() {
     return {
-      'isReady': _isReady,
-      'model': _gemma3ModelName,
-      'maxTokens': _maxTokens,
-      'temperature': _temperature,
-      'backendType': 'mediapipe_genai_stub',
-      'processingMode': 'stub',
-      'modelPath': _modelPath,
+      'isInitialized': _isInitialized,
+      'isReady': isReady,
+      'backend': 'mediapipe_genai',
+      'version': '1.0.0',
     };
   }
 
-  /// Check if service is ready
-  bool get isReady => _isReady;
-
-  /// Check if model download is in progress
-  bool get isModelDownloadInProgress => false; // Stub always returns false
-
-  /// Process with AI Edge
-  Future<String> processWithAIEdge({
-    required String input,
-    Map<String, dynamic>? context,
-  }) async {
-    if (!_isReady) {
-      throw StateError('LLM service not initialized');
-    }
-    return await generateText(prompt: input);
-  }
-
-  /// Dispose service
+  /// Dispose resources
+  @override
   void dispose() {
-    _isReady = false;
-    _logger?.call('🧹 AI Edge LLM service disposed (stub)');
+    try {
+      // MediaPipe GenAI engines are automatically disposed
+      _llmEngine = null;
+      _isInitialized = false;
+      _logger?.call('🧹 AI Edge LLM service disposed');
+    } catch (e) {
+      _logger?.call('⚠️ Error disposing LLM service: $e');
+    }
   }
 }

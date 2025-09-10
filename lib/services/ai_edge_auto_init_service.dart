@@ -216,10 +216,10 @@ class AIEdgeAutoInitService {
       if (modelPath == null) return false;
 
       // Create a temporary RAG service to test
-      final ragService = AIEdgeRagService(logger: _emit);
+      final ragService = AIEdgeRagServiceImpl(logger: _emit);
       
-      // Initialize without downloading (model should exist)
-      final initSuccess = await ragService.initialize(downloadModel: false);
+      // Initialize (model should exist)
+      final initSuccess = await ragService.initialize();
       
       ragService.dispose();
       return initSuccess;

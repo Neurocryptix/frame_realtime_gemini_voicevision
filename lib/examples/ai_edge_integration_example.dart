@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:frame_realtime_gemini_voicevision/services/ai_edge_rag_service.dart';
 import 'package:frame_realtime_gemini_voicevision/agent/services/ai_edge_agent_service.dart';
 import 'package:frame_realtime_gemini_voicevision/agent/services/ai_edge_llm_service.dart';
+import 'package:frame_realtime_gemini_voicevision/agent/interfaces/ai_edge_interfaces.dart';
 
 /// Pure Google AI Edge Integration Example
 /// Demonstrates the complete AI Edge RAG system using MediaPipe GenAI
@@ -82,12 +83,9 @@ class _AIEdgeIntegrationExampleState extends State<AIEdgeIntegrationExample> {
 
       // Step 1: Initialize AI Edge RAG Service
       _addLog('🔧 Initializing AI Edge RAG Service...');
-      _ragService = AIEdgeRagService(logger: _addLog);
+      _ragService = AIEdgeRagServiceImpl(logger: _addLog);
       
-      final ragSuccess = await _ragService!.initialize(
-        modelUrl: modelUrl,
-        downloadModel: true,
-      );
+      final ragSuccess = await _ragService!.initialize();
 
       if (!ragSuccess) {
         _addLog('❌ AI Edge RAG initialization failed');
@@ -99,9 +97,9 @@ class _AIEdgeIntegrationExampleState extends State<AIEdgeIntegrationExample> {
 
       // Step 2: Initialize AI Edge LLM Service
       _addLog('🤖 Initializing AI Edge LLM Service...');
-      _llmService = AIEdgeLLMService(logger: _addLog);
+      _llmService = AIEdgeLLMServiceImpl(logger: _addLog);
       
-      final llmSuccess = await _llmService!.initialize(modelUrl: modelUrl);
+      final llmSuccess = await _llmService!.initialize(modelPath: '/path/to/model.bin');
       
       if (!llmSuccess) {
         _addLog('❌ AI Edge LLM initialization failed');

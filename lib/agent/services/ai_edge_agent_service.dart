@@ -1,5 +1,5 @@
 import 'dart:async';
-import '../../services/ai_edge_rag_service.dart';
+import '../interfaces/ai_edge_interfaces.dart';
 
 /// AI Edge Agent Service
 /// Pure Google AI Edge implementation that integrates with your existing agent architecture
@@ -20,7 +20,7 @@ class AIEdgeAgentService {
     try {
       _logger?.call('🚀 Initializing AI Edge Agent Service...');
 
-      if (!_ragService.isInitialized) {
+      if (!_ragService.isReady) {
         _logger?.call('❌ AI Edge RAG service not initialized');
         return false;
       }
@@ -52,7 +52,7 @@ class AIEdgeAgentService {
 
       // Step 1: Store the user query in AI Edge RAG (if requested)
       if (storeQuery) {
-        await _ragService.storeDocument(
+        await _ragService.addDocument(
           content: query,
           metadata: {
             'type': 'user_query',
@@ -64,40 +64,56 @@ class AIEdgeAgentService {
       }
 
       // Step 2: Use AI Edge RAG for enhanced response generation
-      final ragResponse = await _ragService.queryWithRAG(
+      final searchResults = await _ragService.search(
         query: query,
-        maxResults: 5,
-        similarityThreshold: 0.3,
+        topK: 5,
+        threshold: 0.3,
       );
 
       // Step 3: Store the AI Edge response
-      await _ragService.storeDocument(
-        content: ragResponse.response,
+      final responseContent = searchResults.isNotEmpty 
+        ? 'AI Edge found ${searchResults.length} relevant documents for query: $query'
+        : 'No relevant documents found for query: $query';
+        
+      await _ragService.addDocument(
+        content: responseContent,
         metadata: {
           'type': 'agent_response',
           'source': 'ai_edge_agent',
           'originalQuery': query,
           'timestamp': DateTime.now().toIso8601String(),
-          'processingTimeMs': ragResponse.processingTime.inMilliseconds,
-          'documentsUsed': ragResponse.relevantDocuments.length,
+          'documentsUsed': searchResults.length,
         },
       );
 
       final totalProcessingTime = DateTime.now().difference(startTime);
       _logger?.call('✅ AI Edge processing completed in ${totalProcessingTime.inMilliseconds}ms');
 
+      // Create AIEdgeRagResponse from search results
+      final ragResponse = AIEdgeRagResponse(
+        documents: searchResults.map((result) => RagDocument(
+          id: result['id'] as String? ?? '',
+          content: result['content'] as String? ?? '',
+          metadata: result['metadata'] as Map<String, dynamic>? ?? {},
+          timestamp: DateTime.tryParse(result['timestamp'] as String? ?? '') ?? DateTime.now(),
+        )).toList(),
+        query: query,
+        totalResults: searchResults.length,
+        processingTime: totalProcessingTime,
+      );
+
       return AIEdgeAgentOutput(
         query: query,
-        response: ragResponse.response,
-        relevantContext: _buildContextSummary(ragResponse.relevantDocuments),
-        confidence: _calculateConfidence(ragResponse.relevantDocuments),
+        response: responseContent,
+        relevantContext: _buildContextSummary(ragResponse.documents),
+        confidence: _calculateConfidence(ragResponse.documents),
         processingTime: totalProcessingTime,
         timestamp: startTime,
         ragResponse: ragResponse,
         metadata: {
           'aiEdgeProcessing': true,
           'ragEnabled': true,
-          'contextDocuments': ragResponse.relevantDocuments.length,
+          'contextDocuments': ragResponse.documents.length,
           'model': 'gemma-3n-ai-edge',
           'processingMode': 'on_device',
         },
@@ -126,10 +142,14 @@ class AIEdgeAgentService {
     required DateTime timestamp,
     Map<String, dynamic>? additionalMetadata,
   }) async {
-    await _ragService.storeASROutput(
-      text: text,
-      confidence: confidence,
-      timestamp: timestamp,
+    await _ragService.addDocument(
+      content: text,
+      metadata: {
+        'type': 'asr_output',
+        'confidence': confidence,
+        'timestamp': timestamp.toIso8601String(),
+        ...?additionalMetadata,
+      },
     );
     
     _logger?.call('🎤 Stored ASR in AI Edge RAG: ${_truncate(text)}');
@@ -142,10 +162,14 @@ class AIEdgeAgentService {
     required DateTime timestamp,
     Map<String, dynamic>? additionalMetadata,
   }) async {
-    await _ragService.storeOCROutput(
-      text: text,
-      confidence: confidence,
-      timestamp: timestamp,
+    await _ragService.addDocument(
+      content: text,
+      metadata: {
+        'type': 'ocr_output',
+        'confidence': confidence,
+        'timestamp': timestamp.toIso8601String(),
+        ...?additionalMetadata,
+      },
     );
     
     _logger?.call('👁️ Stored OCR in AI Edge RAG: ${_truncate(text)}');
@@ -173,13 +197,18 @@ class AIEdgeAgentService {
     DateTime? toDate,
   }) async {
     try {
-      final ragResponse = await _ragService.queryWithRAG(
+      final searchResults = await _ragService.search(
         query: query,
-        maxResults: limit,
-        similarityThreshold: threshold,
+        topK: limit,
+        threshold: threshold,
       );
 
-      var results = ragResponse.relevantDocuments;
+      var results = searchResults.map((result) => RagDocument(
+        id: result['id'] as String? ?? '',
+        content: result['content'] as String? ?? '',
+        metadata: result['metadata'] as Map<String, dynamic>? ?? {},
+        timestamp: DateTime.tryParse(result['timestamp'] as String? ?? '') ?? DateTime.now(),
+      )).toList();
 
       // Apply content type filter
       if (contentType != null) {

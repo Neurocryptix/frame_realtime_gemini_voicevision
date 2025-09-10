@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:frame_realtime_gemini_voicevision/services/ai_edge_rag_service.dart';
 import 'package:frame_realtime_gemini_voicevision/services/ai_edge_auto_init_service.dart';
 import 'package:frame_realtime_gemini_voicevision/agent/services/ai_edge_agent_service.dart';
+import 'package:frame_realtime_gemini_voicevision/agent/interfaces/ai_edge_interfaces.dart';
 import 'package:frame_realtime_gemini_voicevision/screens/ai_edge_first_time_setup_screen.dart';
 
 /// Example: Frame App with AI Edge Setup Integration
@@ -119,7 +120,7 @@ class _MainAppState extends State<MainApp> {
       _addLog('🚀 Initializing AI Edge services...');
       
       // Initialize RAG service
-      _ragService = AIEdgeRagService(logger: _addLog);
+      _ragService = AIEdgeRagServiceImpl(logger: _addLog);
       final ragInitialized = await _ragService!.initialize();
       
       if (ragInitialized) {
@@ -160,7 +161,7 @@ class _MainAppState extends State<MainApp> {
       _addLog('🧪 Testing AI Edge capabilities...');
       
       // Test document storage
-      await _ragService!.storeDocument(
+      await _ragService!.addDocument(
         content: 'Test document for Frame AI Edge integration',
         metadata: {'type': 'test', 'timestamp': DateTime.now().toIso8601String()},
       );
