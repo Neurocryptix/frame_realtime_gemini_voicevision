@@ -61,8 +61,8 @@ dependencies:
   google_mlkit_text_recognition: ^0.15.0
   google_mlkit_commons: ^0.11.0
   
-  # TensorFlow Lite for MobileBERT embeddings
-  tflite_flutter: ^0.11.0
+  # TensorFlow Lite for MobileBERT embeddings - temporarily disabled for APK build
+  # tflite_flutter: ^0.11.0
   
   # Speech recognition for agent ASR (read-only, non-blocking)
   speech_to_text: ^7.0.0
@@ -83,9 +83,9 @@ dependencies:
   # GOOGLE AI EDGE RAG (Pure Google AI Edge implementation)
   # ═══════════════════════════════════════════════════════════════════════════
   
-  # Temporarily disabled for CI compatibility - requires Flutter master channel
-  mediapipe_core: ^0.0.1
-  mediapipe_genai: ^0.0.1            # Official Google AI Edge RAG
+  # Temporarily disabled for CI/build compatibility - requires Flutter master channel and NDK
+  # mediapipe_core: ^0.0.1
+  # mediapipe_genai: ^0.0.1            # Official Google AI Edge RAG
   
   # Remove ObjectBox - replaced by Google AI Edge RAG
   # objectbox: ^4.0.0                   
@@ -129,7 +129,7 @@ dependency_overrides:
   google_generative_ai: 0.4.3         # Add missing Gemini dependency
   
   # ═══ TENSORFLOW LITE OVERRIDES ═══
-  tflite_flutter: 0.11.0              # Ensure compatible TensorFlow Lite version
+  # tflite_flutter: 0.11.0              # Ensure compatible TensorFlow Lite version - temporarily disabled
 
 flutter:
   uses-material-design: true

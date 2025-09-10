@@ -25,6 +25,10 @@ import 'package:frame_realtime_gemini_voicevision/audio_upsampler.dart';
 import 'package:frame_realtime_gemini_voicevision/foreground_service.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+// AI Edge setup integration
+import 'package:frame_realtime_gemini_voicevision/services/ai_edge_auto_init_service.dart';
+import 'package:frame_realtime_gemini_voicevision/screens/model_download_screen.dart';
+
 // Agent system imports
 import 'package:frame_realtime_gemini_voicevision/agent/core/agent_core.dart';
 // import 'package:frame_realtime_gemini_voicevision/agent/services/agent_vector_service.dart'; // Legacy - using AI Edge RAG
@@ -70,7 +74,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MainApp(title: 'Frame Realtime Gemini Voice+Vision'),
+      home: const AppInitializer(),
     );
   }
 }
@@ -85,6 +89,96 @@ enum GeminiVoiceName {
 
   const GeminiVoiceName(this.displayName);
   final String displayName;
+}
+
+/// App initializer to check if model download is needed
+class AppInitializer extends StatefulWidget {
+  const AppInitializer({super.key});
+
+  @override
+  State<AppInitializer> createState() => _AppInitializerState();
+}
+
+class _AppInitializerState extends State<AppInitializer> {
+  bool _isCheckingFirstLaunch = true;
+  bool _needsModelDownload = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkModelDownloadNeeded();
+  }
+
+  Future<void> _checkModelDownloadNeeded() async {
+    try {
+      final autoInitService = AIEdgeAutoInitService();
+      final needsSetup = await autoInitService.isFirstLaunch();
+      
+      setState(() {
+        _needsModelDownload = needsSetup;
+        _isCheckingFirstLaunch = false;
+      });
+      
+      autoInitService.dispose();
+    } catch (e) {
+      // Handle error - assume setup not needed
+      setState(() {
+        _needsModelDownload = false;
+        _isCheckingFirstLaunch = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isCheckingFirstLaunch) {
+      return Scaffold(
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.blue[400]!, Colors.purple[600]!],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(color: Colors.white),
+                SizedBox(height: 16),
+                Text(
+                  'Initializing Frame AI...',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_needsModelDownload) {
+      // Show new model download screen
+      return ModelDownloadScreen(
+        onDownloadComplete: () {
+          // Navigate to main app after setup
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => const MainApp(title: 'Frame Realtime Gemini Voice+Vision'),
+            ),
+          );
+        },
+      );
+    }
+
+    // Setup already completed - go to main app
+    return const MainApp(title: 'Frame Realtime Gemini Voice+Vision');
+  }
 }
 
 class MainApp extends StatefulWidget {
@@ -1585,6 +1679,33 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                     },
                     icon: const Icon(Icons.analytics),
                     label: const Text('DB Stats'),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // Model download access
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ModelDownloadScreen(
+                            onDownloadComplete: () => Navigator.pop(context),
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.download_for_offline),
+                    label: const Text('AI Models'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple.withAlpha(25),
+                    ),
                   ),
                 ),
               ],

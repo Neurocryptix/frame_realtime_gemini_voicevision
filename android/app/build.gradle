@@ -15,6 +15,7 @@ def flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "
 
 android {
     namespace "com.example.frame_realtime_gemini_voicevision"
+    ndkVersion = "26.1.10909125"
 
     compileSdkVersion 35
 
@@ -37,13 +38,13 @@ android {
         }
     }
 
-    // Handle native libraries properly for CI/CD
-    packagingOptions {
-        pickFirst '**/libc++_shared.so'
-        pickFirst '**/libjsc.so'
-        pickFirst '**/libobjectbox.so'
-        pickFirst '**/libobjectbox-jni.so'
-    }
+    // Native libraries temporarily disabled for build compatibility
+    // packagingOptions {
+    //     pickFirst '**/libc++_shared.so'
+    //     pickFirst '**/libjsc.so'
+    //     pickFirst '**/libobjectbox.so'
+    //     pickFirst '**/libobjectbox-jni.so'
+    // }
 }
 
 flutter { source "../.." }

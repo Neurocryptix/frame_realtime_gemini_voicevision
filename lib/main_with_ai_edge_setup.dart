@@ -6,7 +6,7 @@ import 'package:frame_realtime_gemini_voicevision/services/ai_edge_rag_service.d
 import 'package:frame_realtime_gemini_voicevision/services/ai_edge_auto_init_service.dart';
 import 'package:frame_realtime_gemini_voicevision/agent/services/ai_edge_agent_service.dart';
 import 'package:frame_realtime_gemini_voicevision/agent/interfaces/ai_edge_interfaces.dart';
-import 'package:frame_realtime_gemini_voicevision/screens/ai_edge_first_time_setup_screen.dart';
+import 'package:frame_realtime_gemini_voicevision/screens/model_download_screen.dart';
 
 /// Example: Frame App with AI Edge Setup Integration
 /// This demonstrates how to integrate the AI Edge first-time setup
@@ -79,9 +79,9 @@ class _AppInitializerState extends State<AppInitializer> {
     }
 
     if (_isFirstLaunch) {
-      // Show AI Edge setup screen
-      return AIEdgeFirstTimeSetupScreen(
-        onSetupComplete: () {
+      // Show new model download screen
+      return ModelDownloadScreen(
+        onDownloadComplete: () {
           // Navigate to main app after setup
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
