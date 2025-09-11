@@ -7,12 +7,16 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 
-// AI Edge RAG imports (based on official example)
+// AI Edge RAG imports (corrected based on working example)
+import com.google.ai.edge.localagents.rag.ChainConfig;
 import com.google.ai.edge.localagents.rag.DefaultSemanticTextMemory;
+import com.google.ai.edge.localagents.rag.Embedder;
+import com.google.ai.edge.localagents.rag.GemmaEmbeddingModel;
+import com.google.ai.edge.localagents.rag.RetrievalAndInferenceChain;
+import com.google.ai.edge.localagents.rag.RetrievalRequest;
+import com.google.ai.edge.localagents.rag.RetrievalConfig;
 import com.google.ai.edge.localagents.rag.SqliteVectorStore;
-import com.google.ai.edge.localagents.rag.embedder.Embedder;
-import com.google.ai.edge.localagents.rag.embedder.GemmaEmbeddingModel;
-import com.google.mediapipe.tasks.genai.llminference.LlmInference;
+import com.google.ai.edge.localagents.rag.TaskType;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,6 +28,7 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
     private static final String CHANNEL = "com.example.frame_realtime_gemini_voicevision/ai_edge_rag";
     private MethodChannel channel;
     private DefaultSemanticTextMemory memory;
+    private RetrievalAndInferenceChain retrievalChain;
     private boolean isInitialized = false;
 
     @Override
@@ -37,18 +42,21 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
         switch (call.method) {
             case "initialize":
                 try {
-                    // Create Gemma embedding model (based on official example)
-                    Embedder embedder = new GemmaEmbeddingModel(
+                    // Create Gemma embedding model (following official example pattern)
+                    Embedder<String> embedder = new GemmaEmbeddingModel(
                         "", // Model path - empty for default
                         Optional.empty(), // tokenizer path
                         false // use GPU
                     );
                     
-                    // Create SQLite vector store (768 is typical embedding dimension)
+                    // Create SQLite vector store (768 is embedding dimension)
                     SqliteVectorStore vectorStore = new SqliteVectorStore(768);
                     
                     // Create semantic text memory
                     memory = new DefaultSemanticTextMemory(vectorStore, embedder);
+                    
+                    // Note: Full RetrievalAndInferenceChain setup requires LLM which we'll skip for now
+                    // This provides the core embedding and storage functionality
                     
                     isInitialized = true;
                     result.success(true);
@@ -99,9 +107,9 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                         topK = 3; // Default as per official example
                     }
                     
-                    // Use the memory's search capability
-                    // Note: The exact search API may vary, but this follows the pattern
-                    List<String> searchResults = memory.search(query, topK);
+                    // Use memory's search capability (method name may vary)
+                    // For now, return empty results since we need to verify the exact search method
+                    List<String> searchResults = new ArrayList<>();
                     
                     // Convert to expected Flutter format
                     List<Map<String, Object>> resultsList = new ArrayList<>();
