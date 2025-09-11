@@ -56,9 +56,9 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.11.0'
 
-    // Google AI Edge RAG and MediaPipe GenAI dependencies
-    implementation 'com.google.ai.edge.localagents:localagents-rag:0.1.0'
-    implementation 'com.google.mediapipe:tasks-genai:0.10.22'
+    // Google AI Edge RAG and MediaPipe GenAI dependencies - try latest versions
+    implementation 'com.google.ai.edge.localagents:localagents-rag:0.3.0'
+    implementation 'com.google.mediapipe:tasks-genai:0.10.27'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
