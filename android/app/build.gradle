@@ -17,7 +17,7 @@ android {
     namespace "com.example.frame_realtime_gemini_voicevision"
     ndkVersion = "26.3.11579264"
 
-    compileSdkVersion 35
+    compileSdkVersion 34
 
     defaultConfig {
         applicationId "com.example.frame_realtime_gemini_voicevision"
