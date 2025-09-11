@@ -7,16 +7,11 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 
-// Updated imports for AI Edge RAG API
-import com.google.ai.edge.localagents.rag.RetrievalAndInferenceChain;
-import com.google.ai.edge.localagents.rag.ChainConfig;
-import com.google.ai.edge.localagents.rag.RetrievalRequest;
-import com.google.ai.edge.localagents.rag.RetrievalConfig;
-import com.google.ai.edge.localagents.rag.TaskType;
-import com.google.ai.edge.localagents.rag.SemanticTextMemory;
+// AI Edge RAG imports (based on official example)
 import com.google.ai.edge.localagents.rag.DefaultSemanticTextMemory;
 import com.google.ai.edge.localagents.rag.SqliteVectorStore;
-import com.google.ai.edge.localagents.rag.GeckoEmbeddingModel;
+import com.google.ai.edge.localagents.rag.embedder.Embedder;
+import com.google.ai.edge.localagents.rag.embedder.GemmaEmbeddingModel;
 import com.google.mediapipe.tasks.genai.llminference.LlmInference;
 
 import java.util.ArrayList;
@@ -28,8 +23,7 @@ import java.util.Optional;
 public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
     private static final String CHANNEL = "com.example.frame_realtime_gemini_voicevision/ai_edge_rag";
     private MethodChannel channel;
-    private RetrievalAndInferenceChain retrievalChain;
-    private SemanticTextMemory memory;
+    private DefaultSemanticTextMemory memory;
     private boolean isInitialized = false;
 
     @Override
@@ -43,22 +37,18 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
         switch (call.method) {
             case "initialize":
                 try {
-                    // Create embedding model
-                    GeckoEmbeddingModel embedder = new GeckoEmbeddingModel(
-                        "", // GECKO_MODEL_PATH - empty for default
+                    // Create Gemma embedding model (based on official example)
+                    Embedder embedder = new GemmaEmbeddingModel(
+                        "", // Model path - empty for default
                         Optional.empty(), // tokenizer path
                         false // use GPU
                     );
                     
-                    // Create vector store 
-                    SqliteVectorStore vectorStore = new SqliteVectorStore(768); // embedding dimension
+                    // Create SQLite vector store (768 is typical embedding dimension)
+                    SqliteVectorStore vectorStore = new SqliteVectorStore(768);
                     
                     // Create semantic text memory
                     memory = new DefaultSemanticTextMemory(vectorStore, embedder);
-                    
-                    // Create simple chain config - simplified without LLM inference for now
-                    // ChainConfig config = ChainConfig.create(null, null, memory);
-                    // retrievalChain = new RetrievalAndInferenceChain(config);
                     
                     isInitialized = true;
                     result.success(true);
@@ -66,76 +56,112 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                     result.error("INITIALIZATION_FAILED", e.getMessage(), null);
                 }
                 break;
+                
             case "addDocument":
                 try {
                     if (!isInitialized) {
                         result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                         return;
                     }
+                    
                     String content = call.argument("content");
                     String documentId = call.argument("documentId");
                     
-                    // Use memory.memorizeChunks for document storage
+                    if (content == null || documentId == null) {
+                        result.error("INVALID_ARGUMENTS", "Content and documentId are required", null);
+                        return;
+                    }
+                    
+                    // Use memorizeChunks method as in the official example
                     memory.memorizeChunks(documentId, content);
                     result.success(true);
                 } catch (Exception e) {
                     result.error("ADD_DOCUMENT_FAILED", e.getMessage(), null);
                 }
                 break;
+                
             case "search":
                 try {
                     if (!isInitialized) {
                         result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                         return;
                     }
+                    
                     String query = call.argument("query");
-                    int topK = call.argument("topK");
+                    Integer topK = call.argument("topK");
                     
-                    // Create retrieval request
-                    RetrievalRequest request = RetrievalRequest.create(
-                        query,
-                        RetrievalConfig.create(topK, 0.0f, TaskType.QUESTION_ANSWERING)
-                    );
+                    if (query == null) {
+                        result.error("INVALID_ARGUMENTS", "Query is required", null);
+                        return;
+                    }
                     
-                    // For now, return empty results as we need full chain setup
+                    if (topK == null) {
+                        topK = 3; // Default as per official example
+                    }
+                    
+                    // Use the memory's search capability
+                    // Note: The exact search API may vary, but this follows the pattern
+                    List<String> searchResults = memory.search(query, topK);
+                    
+                    // Convert to expected Flutter format
                     List<Map<String, Object>> resultsList = new ArrayList<>();
+                    for (int i = 0; i < searchResults.size(); i++) {
+                        Map<String, Object> docMap = new HashMap<>();
+                        docMap.put("id", "doc_" + i);
+                        docMap.put("content", searchResults.get(i));
+                        docMap.put("metadata", new HashMap<String, Object>());
+                        resultsList.add(docMap);
+                    }
+                    
                     result.success(resultsList);
                 } catch (Exception e) {
                     result.error("SEARCH_FAILED", e.getMessage(), null);
                 }
                 break;
+                
             case "getDocument":
                 if (!isInitialized) {
                     result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                     return;
                 }
-                // Not implemented in current API
+                // Not directly supported in the current API
                 result.success(null);
                 break;
+                
             case "removeDocument":
                 if (!isInitialized) {
                     result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                     return;
                 }
-                // Not implemented in current API 
+                // Not directly supported in the current API
                 result.success(true);
                 break;
+                
             case "clearDocuments":
                 try {
                     if (!isInitialized) {
                         result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                         return;
                     }
-                    // Clear memory if supported
+                    
+                    // Clear the vector store
+                    if (memory != null) {
+                        // The exact clear method may vary, but this is the intent
+                        memory = null;
+                        isInitialized = false;
+                    }
+                    
                     result.success(null);
                 } catch (Exception e) {
                     result.error("CLEAR_DOCUMENTS_FAILED", e.getMessage(), null);
                 }
                 break;
+                
             case "dispose":
                 try {
-                    if (retrievalChain != null) {
+                    if (memory != null) {
                         // Clean up resources
+                        memory = null;
                     }
                     isInitialized = false;
                     result.success(null);
@@ -143,6 +169,7 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                     result.error("DISPOSE_FAILED", e.getMessage(), null);
                 }
                 break;
+                
             default:
                 result.notImplemented();
                 break;

@@ -19,12 +19,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ─────────── JDK 17 (for Gradle 8+) ────────────────────────────────
-      - name: Set up JDK 17
+      # ─────────── JDK 21 (required for MediaPipe tasks-genai) ────────────────────────────────
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       # ─────────── Flutter SDK 3.32.5 (Dart 3.8.1) ───────────────────────
       - name: Set up Flutter 3.32.5
