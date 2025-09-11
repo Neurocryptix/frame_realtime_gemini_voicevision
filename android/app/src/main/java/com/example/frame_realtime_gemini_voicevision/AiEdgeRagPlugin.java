@@ -7,17 +7,23 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 
+import com.google.ai.edge.localagents.rag.RagAgent;
+import com.google.ai.edge.localagents.rag.RagAgent.RagAgentOptions;
+import com.google.ai.edge.localagents.rag.doc.Document;
+import com.google.ai.edge.localagents.rag.doc.Metadata;
+import com.google.ai.edge.localagents.rag.embed.text.GeckoEmbedder;
+import com.google.ai.edge.localagents.rag.vectordb.VectorStore;
+import com.google.ai.edge.localagents.rag.vectordb.impl.InMemoryVectorStore;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-// Stub implementation for AI Edge RAG - dependencies temporarily disabled for CI compatibility
-
 public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
     private static final String CHANNEL = "com.example.frame_realtime_gemini_voicevision/ai_edge_rag";
     private MethodChannel channel;
-    private boolean isInitialized = false;
+    private RagAgent ragAgent;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
@@ -27,57 +33,82 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
 
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
-        // Stub implementation - AI Edge RAG dependencies temporarily disabled for CI compatibility
         switch (call.method) {
             case "initialize":
-                isInitialized = true;
-                result.success(true);
+                try {
+                    GeckoEmbedder geckoEmbedder = GeckoEmbedder.builder().build();
+                    VectorStore vectorStore = new InMemoryVectorStore(geckoEmbedder.getEmbeddingDimension());
+                    RagAgentOptions options = RagAgentOptions.builder()
+                            .setEmbedder(geckoEmbedder)
+                            .setVectorStore(vectorStore)
+                            .build();
+                    ragAgent = RagAgent.create(options);
+                    result.success(true);
+                } catch (Exception e) {
+                    result.error("INITIALIZATION_FAILED", e.getMessage(), null);
+                }
                 break;
             case "addDocument":
-                if (!isInitialized) {
-                    result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
-                    return;
+                try {
+                    String content = call.argument("content");
+                    Map<String, Object> metadataMap = call.argument("metadata");
+                    String documentId = call.argument("documentId");
+                    Metadata metadata = new Metadata();
+                    for (Map.Entry<String, Object> entry : metadataMap.entrySet()) {
+                        metadata.put(entry.getKey(), entry.getValue().toString());
+                    }
+                    Document document = Document.builder()
+                            .setId(documentId)
+                            .setContent(content)
+                            .setMetadata(metadata)
+                            .build();
+                    ragAgent.addDocument(document);
+                    result.success(true);
+                } catch (Exception e) {
+                    result.error("ADD_DOCUMENT_FAILED", e.getMessage(), null);
                 }
-                // Stub: Would add document to vector store
-                result.success(true);
                 break;
             case "search":
-                if (!isInitialized) {
-                    result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
-                    return;
+                try {
+                    String query = call.argument("query");
+                    int topK = call.argument("topK");
+                    List<Document> searchResults = ragAgent.search(query, topK);
+                    List<Map<String, Object>> resultsList = new ArrayList<>();
+                    for (Document doc : searchResults) {
+                        Map<String, Object> docMap = new HashMap<>();
+                        docMap.put("id", doc.getId());
+                        docMap.put("content", doc.getContent());
+                        docMap.put("metadata", doc.getMetadata().toMap());
+                        resultsList.add(docMap);
+                    }
+                    result.success(resultsList);
+                } catch (Exception e) {
+                    result.error("SEARCH_FAILED", e.getMessage(), null);
                 }
-                // Stub: Would return search results
-                List<Map<String, Object>> emptyResults = new ArrayList<>();
-                result.success(emptyResults);
                 break;
             case "getDocument":
-                if (!isInitialized) {
-                    result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
-                    return;
-                }
-                // Stub: Would return document by ID
+                // Not implemented in the native SDK
                 result.success(null);
                 break;
             case "removeDocument":
-                if (!isInitialized) {
-                    result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
-                    return;
-                }
-                // Stub: Would remove document
+                // Not implemented in the native SDK
                 result.success(true);
                 break;
             case "clearDocuments":
-                if (!isInitialized) {
-                    result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
-                    return;
+                try {
+                    ragAgent.clear();
+                    result.success(null);
+                } catch (Exception e) {
+                    result.error("CLEAR_DOCUMENTS_FAILED", e.getMessage(), null);
                 }
-                // Stub: Would clear all documents
-                result.success(null);
                 break;
             case "dispose":
-                isInitialized = false;
-                // Stub: Would clean up resources
-                result.success(null);
+                try {
+                    ragAgent.close();
+                    result.success(null);
+                } catch (Exception e) {
+                    result.error("DISPOSE_FAILED", e.getMessage(), null);
+                }
                 break;
             default:
                 result.notImplemented();
