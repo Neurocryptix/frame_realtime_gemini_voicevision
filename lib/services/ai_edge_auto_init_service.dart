@@ -10,7 +10,7 @@ class AIEdgeAutoInitService {
   static const String _firstLaunchKey = 'ai_edge_first_launch_complete';
   static const String _autoInitEnabledKey = 'ai_edge_auto_init_enabled';
   
-  final AIEdgeModelManager _modelManager;
+  late final AIEdgeModelManager _modelManager;
   final void Function(String msg) _emit;
   
   bool _isInitializing = false;
@@ -18,13 +18,17 @@ class AIEdgeAutoInitService {
 
   AIEdgeAutoInitService({
     void Function(String msg)? logger,
-  })  : _emit = logger ?? ((_) {}),
-        _modelManager = AIEdgeModelManager(
-          logger: logger,
-          onProgress: (progress) {
-            // Progress will be handled by status stream
-          },
-        );
+  })  : _emit = logger ?? ((_) {}) {
+    _modelManager = AIEdgeModelManager(
+      logger: logger,
+      onProgress: (progress) {
+        _statusController?.add(AIEdgeInitStatus.downloading(
+          'Downloading Gemma 3 model... ${(progress * 100).toInt()}%',
+          progress,
+        ));
+      },
+    );
+  }
 
   /// Check if this is the first app launch
   Future<bool> isFirstLaunch() async {
@@ -145,17 +149,6 @@ class AIEdgeAutoInitService {
         }).catchError((error) {
           downloadCompleter.completeError(error);
         });
-      }
-
-      // Monitor progress (simulated - you'd integrate with actual progress)
-      double progress = 0.0;
-      while (progress < 1.0 && !downloadCompleter.isCompleted) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        progress = (progress + 0.05).clamp(0.0, 0.95); // Simulate progress
-        yield AIEdgeInitStatus.downloading(
-          'Downloading Gemma 3 model... ${(progress * 100).toInt()}%',
-          progress,
-        );
       }
 
       // Wait for download to complete

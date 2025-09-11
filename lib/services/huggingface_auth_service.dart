@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'package:flutter/material.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
 /// HuggingFace OAuth authentication service following Google AI Edge Gallery pattern
 class HuggingFaceAuthService {
@@ -12,8 +13,12 @@ class HuggingFaceAuthService {
   static const String _tokenExpiryKey = 'huggingface_token_expiry';
   static const String _userInfoKey = 'huggingface_user_info';
 
-  // OAuth configuration - these should be set in your app configuration
-  static const String clientId = 'your-huggingface-client-id'; // Configure this
+  // TODO: Replace with your HuggingFace OAuth App client ID
+  // You can create one at: https://huggingface.co/settings/oauth/apps
+  static const String clientId = 'your-huggingface-client-id'; 
+  
+  // TODO: Configure this redirect URI in your HuggingFace OAuth App
+  // and in your application's deep link settings (e.g., AndroidManifest.xml).
   static const String redirectUri = 'com.example.frame_realtime_gemini_voicevision://oauth/huggingface';
   static const String scope = 'read-repos';
   
@@ -75,7 +80,34 @@ class HuggingFaceAuthService {
     return null;
   }
 
-  /// Start OAuth flow
+  /// Start OAuth flow by launching the authorization URL in a browser.
+  Future<void> startAuthenticationFlow() async {
+    try {
+      if (clientId == 'your-huggingface-client-id') {
+        _log('❌ ERROR: HuggingFace client ID is not configured.');
+        _log('Please create an OAuth App in your HuggingFace settings and set the clientId.');
+        // Optionally, show an error to the user in the UI.
+        return;
+      }
+      final authUrl = await getAuthorizationUrl();
+      _log('Opening authentication URL: $authUrl');
+      await _launchUrl(authUrl);
+    } catch (e) {
+      _log('Error starting authentication flow: $e');
+    }
+  }
+
+  /// Helper to launch a URL.
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      _log('Could not launch $url');
+    }
+  }
+
+  /// Generate the full authorization URL
   Future<String> getAuthorizationUrl() async {
     // Generate state for security
     final state = _generateRandomString(32);
@@ -96,7 +128,8 @@ class HuggingFaceAuthService {
     return 'https://huggingface.co/oauth/authorize?$queryString';
   }
 
-  /// Handle OAuth callback
+  /// Handle OAuth callback from the deep link.
+  /// This should be called by your app when it receives the redirect URI.
   Future<bool> handleAuthorizationCallback(String callbackUrl) async {
     try {
       final uri = Uri.parse(callbackUrl);
@@ -151,10 +184,10 @@ class HuggingFaceAuthService {
         final data = json.decode(response.body) as Map<String, dynamic>;
         await _storeTokens(data);
         await _fetchUserInfo();
-        _log('Successfully authenticated with HuggingFace');
+        _log('✅ Successfully authenticated with HuggingFace');
         return true;
       } else {
-        _log('Token exchange failed: ${response.statusCode} ${response.body}');
+        _log('❌ Token exchange failed: ${response.statusCode} ${response.body}');
         return false;
       }
     } catch (e) {
@@ -342,66 +375,6 @@ class HuggingFaceAuthService {
       _log('Error testing API access: $e');
       return false;
     }
-  }
-
-  /// Show authentication dialog
-  Future<bool> showAuthenticationDialog(BuildContext context) async {
-    final completer = Completer<bool>();
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.login, color: Colors.blue),
-            SizedBox(width: 8),
-            Text('HuggingFace Authentication'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('This app needs access to HuggingFace to download models.'),
-            SizedBox(height: 16),
-            Text('You will be redirected to HuggingFace to sign in.'),
-            SizedBox(height: 8),
-            Text(
-              'Required permissions:\n• Read access to public models\n• Model download access',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              completer.complete(false);
-            },
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              try {
-                final authUrl = await getAuthorizationUrl();
-                _log('Opening authentication URL: $authUrl');
-                // Here you would typically open the URL in a browser or WebView
-                // For now, we'll just complete with false since WebView setup is complex
-                completer.complete(false);
-              } catch (e) {
-                _log('Error starting authentication: $e');
-                completer.complete(false);
-              }
-            },
-            child: const Text('Sign In'),
-          ),
-        ],
-      ),
-    );
-    
-    return completer.future;
   }
 
   /// Get authentication headers for API requests

@@ -18,7 +18,7 @@ class ModelDownloadScreen extends StatefulWidget {
 }
 
 class _ModelDownloadScreenState extends State<ModelDownloadScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   
   late ModelDownloadService _downloadService;
   late HuggingFaceAuthService _authService;
@@ -41,6 +41,7 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     
     _authService = HuggingFaceAuthService(logger: _addLog);
     _downloadService = ModelDownloadService(
@@ -78,7 +79,16 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
     _animationController.dispose();
     _scrollController.dispose();
     _downloadService.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _addLog('🔄 App resumed, checking authentication status...');
+      _checkAuthenticationStatus();
+    }
   }
 
   /// Add log message
@@ -127,82 +137,16 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
   Future<void> _startAuthentication() async {
     try {
       _addLog('🚀 Starting HuggingFace authentication...');
-      
-      // For now, show a dialog explaining the process
-      // In a full implementation, this would launch WebView or external browser
-      final success = await _showAuthenticationDialog();
-      
-      if (success) {
-        setState(() {
-          _isAuthenticated = true;
-        });
-        _addLog('✅ Authentication successful!');
-      } else {
-        _addLog('❌ Authentication cancelled');
-      }
+      _addLog('Redirecting to HuggingFace to sign in...');
+      await _authService.startAuthenticationFlow();
+      // The app will be backgrounded. When it resumes, `didChangeAppLifecycleState` 
+      // will trigger `_checkAuthenticationStatus`.
     } catch (e) {
       _addLog('❌ Authentication error: $e');
     }
   }
 
-  /// Show authentication dialog (simplified for demo)
-  Future<bool> _showAuthenticationDialog() async {
-    final completer = Completer<bool>();
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.login, color: Colors.blue),
-            SizedBox(width: 8),
-            Text('HuggingFace Authentication'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('To download AI models, you need to authenticate with HuggingFace.'),
-            SizedBox(height: 16),
-            Text('Steps:'),
-            Text('1. Create a HuggingFace account at huggingface.co'),
-            Text('2. Accept the model terms for Gemma models'),
-            Text('3. Generate an access token'),
-            SizedBox(height: 12),
-            Text(
-              'For this demo, we\'ll simulate authentication.',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.orange,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              completer.complete(false);
-            },
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Simulate successful authentication
-              completer.complete(true);
-            },
-            child: const Text('Simulate Login'),
-          ),
-        ],
-      ),
-    );
-    
-    return completer.future;
-  }
+  
 
   /// Start model download
   Future<void> _startDownload() async {

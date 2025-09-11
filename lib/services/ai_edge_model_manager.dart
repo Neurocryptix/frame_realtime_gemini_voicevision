@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:disk_space_plus/disk_space_plus.dart';
+import 'package:crypto/crypto.dart';
 
 /// AI Edge Model Manager for one-time automatic model download
 /// Handles Gemma 3 model download and caching on first app launch
@@ -430,10 +432,11 @@ class AIEdgeModelManager {
   Future<String> _calculateFileChecksum(String filePath) async {
     try {
       final file = File(filePath);
-      final bytes = await file.readAsBytes();
-      return bytes.length.toString(); // Simple checksum based on file size
-      // TODO: Implement proper hash (SHA256) if needed
+      final stream = file.openRead();
+      final hash = await sha256.bind(stream).first;
+      return hash.toString();
     } catch (e) {
+      _emit('❌ Error calculating checksum: $e');
       return 'unknown';
     }
   }
@@ -477,12 +480,16 @@ class AIEdgeModelManager {
   /// Check available storage space
   Future<bool> hasEnoughStorage({int requiredMB = 500}) async {
     try {
-      final appDir = await getApplicationDocumentsDirectory();
-      await appDir.stat();
+      final freeSpace = await DiskSpacePlus().getFreeDiskSpace;
+      if (freeSpace == null) {
+        _emit('⚠️ Could not determine free disk space. Assuming enough space.');
+        return true; // Fail open
+      }
       
-      // This is a simplified check - in production you'd want more sophisticated storage checking
-      _emit('📱 Checking storage availability...');
-      return true; // For now, assume we have enough space
+      final freeMB = freeSpace;
+      _emit('📱 Available storage: ${freeMB.toStringAsFixed(2)} MB');
+      
+      return freeMB >= requiredMB;
     } catch (e) {
       _emit('⚠️ Could not check storage: $e');
       return true; // Assume we have space if we can't check

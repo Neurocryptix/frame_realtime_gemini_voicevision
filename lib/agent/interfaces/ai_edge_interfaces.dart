@@ -5,8 +5,6 @@ abstract class AIEdgeRagService {
   Future<bool> initialize({String? embeddingModelPath, String? vectorStorePath});
   Future<bool> addDocument({required String content, required Map<String, dynamic> metadata, String? documentId});
   Future<List<Map<String, dynamic>>> search({required String query, int topK = 5, double threshold = 0.3});
-  Future<Map<String, dynamic>?> getDocument(String documentId);
-  Future<bool> removeDocument(String documentId);
   int get documentCount;
   bool get isReady;
   Map<String, dynamic> getStatistics();
