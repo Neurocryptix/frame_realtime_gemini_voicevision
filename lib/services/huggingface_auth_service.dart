@@ -21,6 +21,17 @@ class HuggingFaceAuthService {
   static const String redirectUri = 'com.brilliantlabs.frame.realtime://oauth/huggingface';
   static const String scope = 'read-repos';
   
+  // OAuth configuration instructions
+  static const String oauthInstructions = '''
+To enable OAuth authentication:
+1. Go to https://huggingface.co/settings/oauth/apps
+2. Create a new OAuth app with:
+   - Name: Frame AI Edge App
+   - Redirect URI: com.brilliantlabs.frame.realtime://oauth/huggingface
+   - Scopes: read-repos
+3. Replace the clientId constant in this file with your app's Client ID
+''';
+  
   final void Function(String message)? logger;
   static const MethodChannel _oauthChannel = MethodChannel('com.brilliantlabs.frame.realtime/oauth');
   StreamSubscription<dynamic>? _oauthSubscription;
@@ -56,12 +67,23 @@ class HuggingFaceAuthService {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString(_tokenKey);
       
-      if (token == null) return false;
+      if (token == null) {
+        _log('🔑 No stored token found');
+        return false;
+      }
       
       // For direct token auth, validate token by testing API access
       final authMethod = prefs.getString(_authMethodKey) ?? 'token';
+      _log('🔍 Checking authentication for method: $authMethod');
+      
       if (authMethod == 'token') {
-        return await testApiAccess();
+        _log('🌐 Validating token with API...');
+        final isValid = await testApiAccess();
+        if (!isValid) {
+          _log('❌ Token validation failed - clearing invalid token');
+          await clearToken();
+        }
+        return isValid;
       }
       
       // For OAuth, check token expiry
@@ -70,13 +92,21 @@ class HuggingFaceAuthService {
         final expiryTime = DateTime.fromMillisecondsSinceEpoch(expiryTimestamp);
         if (DateTime.now().isAfter(expiryTime.subtract(const Duration(minutes: 5)))) {
           // Token expires soon, try to refresh
+          _log('🔄 OAuth token expires soon, attempting refresh...');
           return await _refreshAccessToken();
         }
       }
       
-      return true;
+      // For OAuth without expiry or valid expiry, test API access
+      _log('🌐 Testing OAuth token with API...');
+      final isValid = await testApiAccess();
+      if (!isValid) {
+        _log('❌ OAuth token validation failed');
+        await clearToken();
+      }
+      return isValid;
     } catch (e) {
-      _log('Error checking authentication: $e');
+      _log('❌ Error checking authentication: $e');
       return false;
     }
   }
@@ -85,17 +115,19 @@ class HuggingFaceAuthService {
   Future<bool> setToken(String token) async {
     try {
       if (token.trim().isEmpty) {
-        _log('Empty token provided');
+        _log('❌ Empty token provided');
         return false;
       }
 
       // Validate token format (should start with hf_)
       if (!token.startsWith('hf_')) {
-        _log('Invalid token format - HuggingFace tokens should start with "hf_"');
+        _log('❌ Invalid token format - HuggingFace tokens should start with "hf_"');
         return false;
       }
 
-      _log('Setting HuggingFace token...');
+      _log('📝 Setting HuggingFace token...');
+      _log('🔍 Token format: Valid (starts with hf_)');
+      _log('📏 Token length: ${token.length} characters');
       
       // Store token
       final prefs = await SharedPreferences.getInstance();
@@ -104,20 +136,26 @@ class HuggingFaceAuthService {
       await prefs.remove(_refreshTokenKey); // Clear OAuth refresh token
       await prefs.remove(_tokenExpiryKey); // Clear OAuth expiry
       
+      _log('💾 Token stored locally');
+      
       // Test token validity
+      _log('🌐 Testing token with HuggingFace API...');
       final isValid = await testApiAccess();
+      
       if (isValid) {
+        _log('🔄 Fetching user information...');
         await _fetchUserInfo();
         _log('✅ HuggingFace token validated successfully');
         return true;
       } else {
         // Clear invalid token
+        _log('🗑️ Clearing invalid token...');
         await clearToken();
-        _log('❌ Invalid HuggingFace token');
+        _log('❌ Invalid HuggingFace token - API test failed');
         return false;
       }
     } catch (e) {
-      _log('Error setting token: $e');
+      _log('❌ Error setting token: $e');
       return false;
     }
   }
@@ -145,6 +183,11 @@ class HuggingFaceAuthService {
     } catch (e) {
       return 'token';
     }
+  }
+
+  /// Get OAuth client ID for configuration checking
+  String getClientId() {
+    return clientId;
   }
 
   /// Get stored access token
@@ -443,8 +486,12 @@ class HuggingFaceAuthService {
   Future<bool> testApiAccess() async {
     try {
       final token = await getAccessToken();
-      if (token == null) return false;
+      if (token == null) {
+        _log('❌ No token available for API test');
+        return false;
+      }
 
+      _log('🌐 Making API request to HuggingFace...');
       final response = await http.get(
         Uri.parse('https://huggingface.co/api/whoami'),
         headers: {
@@ -453,19 +500,41 @@ class HuggingFaceAuthService {
         },
       );
 
+      _log('📡 API Response: ${response.statusCode}');
+
       if (response.statusCode == 200) {
-        _log('API access test successful');
+        _log('✅ API access test successful');
+        final responseBody = response.body;
+        if (responseBody.isNotEmpty) {
+          try {
+            final userInfo = json.decode(responseBody);
+            _log('👤 User: ${userInfo['name'] ?? userInfo['login'] ?? 'Unknown'}');
+          } catch (e) {
+            _log('⚠️ Could not parse user info from API response');
+          }
+        }
         return true;
       } else if (response.statusCode == 401) {
-        _log('API access test failed: Unauthorized');
-        // Try to refresh token
-        return await _refreshAccessToken();
+        _log('❌ API access test failed: Unauthorized (401)');
+        _log('💡 Token may be expired or invalid');
+        // Try to refresh token for OAuth
+        final authMethod = await getAuthMethod();
+        if (authMethod == 'oauth') {
+          _log('🔄 Attempting to refresh OAuth token...');
+          return await _refreshAccessToken();
+        }
+        return false;
+      } else if (response.statusCode == 403) {
+        _log('❌ API access test failed: Forbidden (403)');
+        _log('💡 Token may not have required permissions');
+        return false;
       } else {
-        _log('API access test failed: ${response.statusCode}');
+        _log('❌ API access test failed: HTTP ${response.statusCode}');
+        _log('📄 Response: ${response.body}');
         return false;
       }
     } catch (e) {
-      _log('Error testing API access: $e');
+      _log('❌ Error testing API access: $e');
       return false;
     }
   }

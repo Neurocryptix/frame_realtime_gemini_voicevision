@@ -43,6 +43,9 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
   // Setup logs
   final List<String> _setupLogs = [];
   final ScrollController _scrollController = ScrollController();
+  
+  // Authentication debugging
+  bool _showAuthDebug = true;
 
   @override
   void initState() {
@@ -122,8 +125,17 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
   /// Check authentication status
   Future<void> _checkAuthenticationStatus() async {
     try {
-      final isAuth = await _authService.isAuthenticated();
+      _addLog('🔍 Checking authentication status...');
+      
+      // Check stored token first
+      final storedToken = await _authService.getAccessToken();
+      _addLog('🔑 Stored token: ${storedToken != null ? "Found (${storedToken.substring(0, 8)}...)" : "None"}');
+      
       final currentAuthMethod = await _authService.getAuthMethod();
+      _addLog('📱 Auth method: $currentAuthMethod');
+      
+      final isAuth = await _authService.isAuthenticated();
+      _addLog('✅ Authentication result: $isAuth');
       
       setState(() {
         _isAuthenticated = isAuth;
@@ -132,12 +144,22 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
       
       if (isAuth) {
         _addLog('✅ HuggingFace authentication verified ($currentAuthMethod)');
-        final userInfo = await _authService.getUserInfo();
-        if (userInfo != null) {
-          _addLog('👋 Signed in as: ${userInfo['name'] ?? 'User'}');
+        try {
+          final userInfo = await _authService.getUserInfo();
+          if (userInfo != null) {
+            _addLog('👋 Signed in as: ${userInfo['name'] ?? userInfo['login'] ?? 'User'}');
+            _addLog('📧 Email: ${userInfo['email'] ?? 'Not provided'}');
+          } else {
+            _addLog('⚠️ Could not fetch user info');
+          }
+        } catch (e) {
+          _addLog('⚠️ Error fetching user info: $e');
         }
       } else {
         _addLog('🔑 HuggingFace authentication required');
+        if (storedToken != null) {
+          _addLog('⚠️ Token exists but validation failed - may be expired or invalid');
+        }
       }
     } catch (e) {
       _addLog('❌ Error checking authentication: $e');
@@ -158,6 +180,16 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
 
     try {
       _addLog('🔍 Validating HuggingFace token...');
+      _addLog('📝 Token format: ${token.startsWith('hf_') ? "✅ Valid format" : "❌ Invalid format - should start with 'hf_'"}');
+      _addLog('📏 Token length: ${token.length} characters');
+      
+      if (!token.startsWith('hf_')) {
+        _addLog('❌ HuggingFace tokens must start with "hf_"');
+        _addLog('💡 Get your token from: https://huggingface.co/settings/tokens');
+        return;
+      }
+      
+      _addLog('🌐 Testing token with HuggingFace API...');
       final success = await _authService.setToken(token);
       
       if (success) {
@@ -166,11 +198,17 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
           _authMethod = 'token';
         });
         _addLog('✅ Token validated successfully');
+        _addLog('🔄 Refreshing authentication status...');
         
         // Clear token field for security
         _tokenController.clear();
+        
+        // Refresh status to show user info
+        await _checkAuthenticationStatus();
       } else {
-        _addLog('❌ Invalid token - please check your HuggingFace token');
+        _addLog('❌ Token validation failed');
+        _addLog('💡 Check token permissions and try again');
+        _addLog('🔗 Create token at: https://huggingface.co/settings/tokens');
       }
     } catch (e) {
       _addLog('❌ Token validation error: $e');
@@ -199,13 +237,32 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
   /// Start authentication flow
   Future<void> _startAuthentication() async {
     try {
-      _addLog('🚀 Starting HuggingFace authentication...');
-      _addLog('Redirecting to HuggingFace to sign in...');
+      _addLog('🚀 Starting HuggingFace OAuth authentication...');
+      _addLog('📱 Checking OAuth configuration...');
+      
+      // Check if OAuth is properly configured
+      final clientId = _authService.getClientId();
+      _addLog('🔑 Client ID: ${clientId.startsWith('hf_oauth') ? "⚠️ Placeholder - OAuth not configured" : "✅ Configured"}');
+      
+      if (clientId.startsWith('hf_oauth')) {
+        _addLog('❌ OAuth not configured properly');
+        _addLog('💡 OAuth requires a registered HuggingFace app');
+        _addLog('🔗 Create OAuth app at: https://huggingface.co/settings/oauth/apps');
+        _addLog('📋 Use redirect URI: com.brilliantlabs.frame.realtime://oauth/huggingface');
+        _addLog('💡 For now, please use the "Use Token" option instead');
+        return;
+      }
+      
+      _addLog('🌐 Redirecting to HuggingFace to sign in...');
+      _addLog('📱 App will be backgrounded during OAuth flow');
+      
       await _authService.startAuthenticationFlow();
+      
       // The app will be backgrounded. When it resumes, `didChangeAppLifecycleState` 
       // will trigger `_checkAuthenticationStatus`.
     } catch (e) {
-      _addLog('❌ Authentication error: $e');
+      _addLog('❌ OAuth authentication error: $e');
+      _addLog('💡 Try using the "Use Token" option instead');
     }
   }
 
@@ -332,6 +389,62 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
     if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)}GB';
+  }
+
+  /// Get authentication debug information
+  Future<Map<String, dynamic>> _getAuthDebugInfo() async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      final authMethod = await _authService.getAuthMethod();
+      final token = await _authService.getAccessToken();
+      final clientId = _authService.getClientId();
+      
+      return {
+        'isAuthenticated': isAuth,
+        'authMethod': authMethod,
+        'hasToken': token != null,
+        'clientId': clientId.length > 20 ? '${clientId.substring(0, 20)}...' : clientId,
+        'lastCheck': DateTime.now().toString().substring(11, 19),
+      };
+    } catch (e) {
+      return {
+        'error': e.toString(),
+        'lastCheck': DateTime.now().toString().substring(11, 19),
+      };
+    }
+  }
+
+  /// Build debug info row
+  Widget _buildDebugRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[800],
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Skip setup
@@ -544,7 +657,7 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
                                     ],
                                   ),
                                 ),
-                                if (_isAuthenticated)
+                                if (_isAuthenticated) ...[
                                   TextButton.icon(
                                     onPressed: _clearAuthentication,
                                     icon: const Icon(Icons.logout, size: 16),
@@ -553,6 +666,19 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
                                       foregroundColor: Colors.grey[600],
                                     ),
                                   ),
+                                ] else ...[
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      _addLog('🔄 Refreshing authentication status...');
+                                      _checkAuthenticationStatus();
+                                    },
+                                    icon: const Icon(Icons.refresh, size: 16),
+                                    label: const Text('Refresh'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.blue[600],
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                             
@@ -609,6 +735,46 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
                               
                               // Token input (if token method selected)
                               if (_authMethod == 'token') ...[
+                                // Token instructions
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue[50],
+                                    border: Border.all(color: Colors.blue[200]!),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(Icons.info_outline, size: 16, color: Colors.blue[700]),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'How to get your HuggingFace token:',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.blue[700],
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '1. Go to huggingface.co/settings/tokens\n'
+                                        '2. Click "New token"\n'
+                                        '3. Select "Read" permission\n'
+                                        '4. Copy and paste the token below',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.blue[600],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
                                 Row(
                                   children: [
                                     Expanded(
@@ -629,6 +795,7 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
                                         obscureText: _tokenObscured,
                                         enabled: !_isValidatingToken,
                                         onFieldSubmitted: (_) => _validateAndSetToken(),
+                                        maxLines: 1,
                                       ),
                                     ),
                                     const SizedBox(width: 12),
@@ -670,7 +837,64 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
                         ),
                       ),
                       
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
+
+                      // Debug information section
+                      if (_showAuthDebug) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            border: Border.all(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.bug_report, size: 16, color: Colors.grey[600]),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Authentication Debug Info',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey[700],
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  TextButton(
+                                    onPressed: () => setState(() => _showAuthDebug = false),
+                                    child: const Text('Hide', style: TextStyle(fontSize: 12)),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              FutureBuilder<Map<String, dynamic>>(
+                                future: _getAuthDebugInfo(),
+                                builder: (context, snapshot) {
+                                  if (snapshot.hasData) {
+                                    final info = snapshot.data!;
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        _buildDebugRow('Authenticated', info['isAuthenticated'].toString()),
+                                        _buildDebugRow('Method', info['authMethod']),
+                                        _buildDebugRow('Token Present', info['hasToken'].toString()),
+                                        _buildDebugRow('Client ID', info['clientId']),
+                                        _buildDebugRow('Last Check', info['lastCheck']),
+                                      ],
+                                    );
+                                  }
+                                  return const Text('Loading debug info...', style: TextStyle(fontSize: 12));
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
 
                       // Model selection
                       const Text(
