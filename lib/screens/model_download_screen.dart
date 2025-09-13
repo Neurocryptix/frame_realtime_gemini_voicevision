@@ -33,6 +33,12 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
   bool _downloadComplete = false;
   ModelMetadata? _selectedModel;
   ModelDownloadProgress? _currentProgress;
+  
+  // Authentication UI State
+  String _authMethod = 'token'; // 'token' or 'oauth'
+  final TextEditingController _tokenController = TextEditingController();
+  bool _tokenObscured = true;
+  bool _isValidatingToken = false;
 
   // Setup logs
   final List<String> _setupLogs = [];
@@ -78,7 +84,9 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
     _downloadSubscription?.cancel();
     _animationController.dispose();
     _scrollController.dispose();
+    _tokenController.dispose();
     _downloadService.dispose();
+    _authService.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -115,12 +123,15 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
   Future<void> _checkAuthenticationStatus() async {
     try {
       final isAuth = await _authService.isAuthenticated();
+      final currentAuthMethod = await _authService.getAuthMethod();
+      
       setState(() {
         _isAuthenticated = isAuth;
+        _authMethod = currentAuthMethod;
       });
       
       if (isAuth) {
-        _addLog('✅ HuggingFace authentication verified');
+        _addLog('✅ HuggingFace authentication verified ($currentAuthMethod)');
         final userInfo = await _authService.getUserInfo();
         if (userInfo != null) {
           _addLog('👋 Signed in as: ${userInfo['name'] ?? 'User'}');
@@ -130,6 +141,58 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
       }
     } catch (e) {
       _addLog('❌ Error checking authentication: $e');
+    }
+  }
+
+  /// Validate and set HuggingFace token
+  Future<void> _validateAndSetToken() async {
+    final token = _tokenController.text.trim();
+    if (token.isEmpty) {
+      _addLog('❌ Please enter a HuggingFace token');
+      return;
+    }
+
+    setState(() {
+      _isValidatingToken = true;
+    });
+
+    try {
+      _addLog('🔍 Validating HuggingFace token...');
+      final success = await _authService.setToken(token);
+      
+      if (success) {
+        setState(() {
+          _isAuthenticated = true;
+          _authMethod = 'token';
+        });
+        _addLog('✅ Token validated successfully');
+        
+        // Clear token field for security
+        _tokenController.clear();
+      } else {
+        _addLog('❌ Invalid token - please check your HuggingFace token');
+      }
+    } catch (e) {
+      _addLog('❌ Token validation error: $e');
+    } finally {
+      setState(() {
+        _isValidatingToken = false;
+      });
+    }
+  }
+
+  /// Clear authentication
+  Future<void> _clearAuthentication() async {
+    try {
+      await _authService.clearToken();
+      setState(() {
+        _isAuthenticated = false;
+        _authMethod = 'token';
+      });
+      _tokenController.clear();
+      _addLog('🔄 Authentication cleared');
+    } catch (e) {
+      _addLog('❌ Error clearing authentication: $e');
     }
   }
 
@@ -435,58 +498,174 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Authentication status
+                      // Authentication status and input
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: _isAuthenticated ? Colors.green[50] : Colors.orange[50],
+                          color: _isAuthenticated ? Colors.green[50] : Colors.blue[50],
                           border: Border.all(
-                            color: _isAuthenticated ? Colors.green[200]! : Colors.orange[200]!,
+                            color: _isAuthenticated ? Colors.green[200]! : Colors.blue[200]!,
                           ),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              _isAuthenticated ? Icons.verified_user : Icons.warning,
-                              color: _isAuthenticated ? Colors.green[700] : Colors.orange[700],
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _isAuthenticated
-                                        ? 'Authentication Verified'
-                                        : 'Authentication Required',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: _isAuthenticated ? Colors.green[700] : Colors.orange[700],
+                            // Status header
+                            Row(
+                              children: [
+                                Icon(
+                                  _isAuthenticated ? Icons.verified_user : Icons.key,
+                                  color: _isAuthenticated ? Colors.green[700] : Colors.blue[700],
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _isAuthenticated
+                                            ? 'HuggingFace Authenticated'
+                                            : 'HuggingFace Authentication',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: _isAuthenticated ? Colors.green[700] : Colors.blue[700],
+                                        ),
+                                      ),
+                                      Text(
+                                        _isAuthenticated
+                                            ? 'Ready to download models'
+                                            : 'Required for model downloads',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (_isAuthenticated)
+                                  TextButton.icon(
+                                    onPressed: _clearAuthentication,
+                                    icon: const Icon(Icons.logout, size: 16),
+                                    label: const Text('Clear'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.grey[600],
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _isAuthenticated
-                                        ? 'You can download models from HuggingFace'
-                                        : 'Sign in to HuggingFace to download models',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[600],
+                              ],
+                            ),
+                            
+                            // Authentication input (if not authenticated)
+                            if (!_isAuthenticated) ...[
+                              const SizedBox(height: 16),
+                              
+                              // Auth method selector
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: _authMethod == 'token' ? Colors.blue[100] : Colors.grey[100],
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: _authMethod == 'token' ? Colors.blue[300]! : Colors.grey[300]!,
+                                        ),
+                                      ),
+                                      child: RadioListTile<String>(
+                                        value: 'token',
+                                        groupValue: _authMethod,
+                                        onChanged: (value) => setState(() => _authMethod = value!),
+                                        title: const Text('Use Token', style: TextStyle(fontSize: 14)),
+                                        subtitle: const Text('Enter HuggingFace access token', style: TextStyle(fontSize: 12)),
+                                        dense: true,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: _authMethod == 'oauth' ? Colors.blue[100] : Colors.grey[100],
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: _authMethod == 'oauth' ? Colors.blue[300]! : Colors.grey[300]!,
+                                        ),
+                                      ),
+                                      child: RadioListTile<String>(
+                                        value: 'oauth',
+                                        groupValue: _authMethod,
+                                        onChanged: (value) => setState(() => _authMethod = value!),
+                                        title: const Text('OAuth Flow', style: TextStyle(fontSize: 14)),
+                                        subtitle: const Text('Sign in via browser', style: TextStyle(fontSize: 12)),
+                                        dense: true,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                            if (!_isAuthenticated)
-                              ElevatedButton(
-                                onPressed: _startAuthentication,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.orange[600],
-                                  foregroundColor: Colors.white,
+                              
+                              const SizedBox(height: 16),
+                              
+                              // Token input (if token method selected)
+                              if (_authMethod == 'token') ...[
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _tokenController,
+                                        decoration: InputDecoration(
+                                          labelText: 'HuggingFace Token',
+                                          hintText: 'hf_...',
+                                          border: const OutlineInputBorder(),
+                                          prefixIcon: const Icon(Icons.vpn_key),
+                                          suffixIcon: IconButton(
+                                            icon: Icon(_tokenObscured ? Icons.visibility : Icons.visibility_off),
+                                            onPressed: () => setState(() => _tokenObscured = !_tokenObscured),
+                                          ),
+                                          helperText: 'Get token from huggingface.co/settings/tokens',
+                                          helperStyle: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                        ),
+                                        obscureText: _tokenObscured,
+                                        enabled: !_isValidatingToken,
+                                        onFieldSubmitted: (_) => _validateAndSetToken(),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    ElevatedButton(
+                                      onPressed: _isValidatingToken ? null : _validateAndSetToken,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue[600],
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                      ),
+                                      child: _isValidatingToken
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                            )
+                                          : const Text('Validate'),
+                                    ),
+                                  ],
                                 ),
-                                child: const Text('Sign In'),
-                              ),
+                              ] else ...[
+                                // OAuth button
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: _startAuthentication,
+                                    icon: const Icon(Icons.open_in_browser),
+                                    label: const Text('Sign In with HuggingFace'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.orange[600],
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ],
                         ),
                       ),

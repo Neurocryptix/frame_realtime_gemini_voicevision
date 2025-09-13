@@ -1,26 +1,29 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:disk_space_plus/disk_space_plus.dart';
 import 'package:crypto/crypto.dart';
+import '../models/model_metadata.dart';
+import 'model_download_service.dart';
+import 'huggingface_auth_service.dart';
 
-/// AI Edge Model Manager for one-time automatic model download
-/// Handles Gemma 3 model download and caching on first app launch
+/// AI Edge Model Manager - Consolidated model management using modern services
+/// Integrates with Google AI Edge Gallery patterns for model download and validation
 class AIEdgeModelManager {
   static const String _modelDownloadedKey = 'ai_edge_model_downloaded';
   static const String _modelVersionKey = 'ai_edge_model_version';
-  static const String _currentModelVersion = '1.0.0'; // Increment when model changes
-  
-  // Gemma 3 model configuration
-  static const String _gemmaModelName = 'gemma-3n-2b-it-int4.bin';
-  static const String _modelChecksumKey = 'ai_edge_model_checksum';
+  static const String _currentModelVersion = '2.0.0'; // Updated for consolidated system
+  static const String _gemmaModelName = 'gemma-2b-it-q4_0.gguf'; // Legacy compatibility
+  static const String _modelChecksumKey = 'ai_edge_model_checksum'; // Legacy compatibility
   
   final void Function(String msg) _emit;
   final void Function(double progress) _onProgress;
+  
+  late final ModelDownloadService _downloadService;
+  late final HuggingFaceAuthService _authService;
   
   bool _isDownloading = false;
   String? _modelPath;
@@ -29,32 +32,44 @@ class AIEdgeModelManager {
     void Function(String msg)? logger,
     void Function(double progress)? onProgress,
   })  : _emit = logger ?? ((_) {}),
-        _onProgress = onProgress ?? ((_) {});
+        _onProgress = onProgress ?? ((_) {}) {
+    _authService = HuggingFaceAuthService(logger: logger);
+    _downloadService = ModelDownloadService(authService: _authService, logger: logger);
+  }
 
   /// Check if model needs to be downloaded on app startup
   Future<bool> needsModelDownload() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final isDownloaded = prefs.getBool(_modelDownloadedKey) ?? false;
-      final currentVersion = prefs.getString(_modelVersionKey) ?? '';
+      // Check if we have any models downloaded using the new system
+      final downloadedModels = await _downloadService.getDownloadedModels();
       
-      // Setup model path
-      final appDir = await getApplicationDocumentsDirectory();
-      _modelPath = '${appDir.path}/$_gemmaModelName';
-      
-      // Check if model file exists and version matches
-      final modelFile = File(_modelPath!);
-      final fileExists = await modelFile.exists();
-      
-      if (!isDownloaded || !fileExists || currentVersion != _currentModelVersion) {
-        _emit('🔍 Model download needed:');
-        _emit('   Downloaded: $isDownloaded');
-        _emit('   File exists: $fileExists');
-        _emit('   Version: $currentVersion (current: $_currentModelVersion)');
+      if (downloadedModels.isEmpty) {
+        _emit('🔍 No AI Edge models found - download needed');
         return true;
       }
       
-      _emit('✅ Model already available at: $_modelPath');
+      // Check if we have a recommended model
+      final defaultModel = ModelAllowlist.getDefaultModel();
+      if (defaultModel != null) {
+        final hasDefaultModel = downloadedModels.contains(defaultModel.modelId);
+        if (!hasDefaultModel) {
+          _emit('🔍 Recommended model not found - download needed');
+          return true;
+        }
+        
+        // Verify model integrity
+        final isValid = await _downloadService.verifyModelIntegrity(defaultModel.modelId);
+        if (!isValid) {
+          _emit('🔍 Model integrity check failed - redownload needed');
+          return true;
+        }
+        
+        _modelPath = await _downloadService.getModelPath(defaultModel.modelId);
+        _emit('✅ AI Edge model ready: ${defaultModel.displayName}');
+        return false;
+      }
+      
+      _emit('✅ ${downloadedModels.length} AI Edge model(s) available');
       return false;
     } catch (e) {
       _emit('❌ Error checking model status: $e');
@@ -64,7 +79,7 @@ class AIEdgeModelManager {
 
   /// Download model automatically with progress tracking
   Future<bool> downloadModelAutomatically({
-    String? modelUrl,
+    ModelMetadata? specificModel,
     bool showProgress = true,
   }) async {
     if (_isDownloading) {
@@ -74,45 +89,59 @@ class AIEdgeModelManager {
 
     try {
       _isDownloading = true;
-      _emit('🚀 Starting automatic Gemma 3 model download...');
       
-      // Use provided URL or try to get from assets/config
-      final downloadUrl = modelUrl ?? await _getModelUrlFromConfig();
-      
-      if (downloadUrl == null) {
-        _emit('❌ No model download URL configured');
-        _emit('💡 Please configure model URL in app settings');
+      // Get the model to download (specific or default)
+      final modelToDownload = specificModel ?? ModelAllowlist.getDefaultModel();
+      if (modelToDownload == null) {
+        _emit('❌ No model available for download');
         return false;
       }
-
-      // Create model directory if needed
-      final appDir = await getApplicationDocumentsDirectory();
-      final modelDir = Directory('${appDir.path}/ai_edge_models');
-      await modelDir.create(recursive: true);
       
-      _modelPath = '${modelDir.path}/$_gemmaModelName';
-      final tempPath = '$_modelPath.tmp';
-
-      _emit('📥 Downloading from: ${_truncateUrl(downloadUrl)}');
-      _emit('💾 Saving to: $_modelPath');
-
-      // Download with progress tracking
-      final success = await _downloadWithProgress(downloadUrl, tempPath);
+      _emit('🚀 Starting ${modelToDownload.displayName} download...');
       
-      if (success) {
-        // Move from temp to final location
-        final tempFile = File(tempPath);
-        await tempFile.rename(_modelPath!);
+      // Check authentication if model requires it
+      if (modelToDownload.requiresAuth) {
+        final isAuthenticated = await _authService.isAuthenticated();
+        if (!isAuthenticated) {
+          _emit('❌ Authentication required for ${modelToDownload.displayName}');
+          _emit('💡 Please authenticate with HuggingFace first');
+          return false;
+        }
+      }
+
+      // Setup progress tracking
+      StreamSubscription<ModelDownloadProgress>? progressSubscription;
+      if (showProgress) {
+        progressSubscription = _downloadService
+          .getDownloadProgress(modelToDownload.modelId)
+          .listen((progress) {
+            _onProgress(progress.progress);
+            if (progress.progress > 0) {
+              final percent = (progress.progress * 100).toStringAsFixed(1);
+              _emit('📥 Downloading: $percent%');
+            }
+          });
+      }
+
+      try {
+        // Download using the consolidated service
+        final success = await _downloadService.downloadModel(modelToDownload);
         
-        // Mark as downloaded and save version
-        await _markModelAsDownloaded();
-        
-        _emit('✅ Model download completed successfully!');
-        _emit('📁 Model ready at: $_modelPath');
-        return true;
-      } else {
-        _emit('❌ Model download failed');
-        return false;
+        if (success) {
+          _modelPath = await _downloadService.getModelPath(modelToDownload.modelId);
+          
+          // Mark as downloaded in legacy system
+          await _markModelAsDownloaded();
+          
+          _emit('✅ Model download completed successfully!');
+          _emit('📁 Model ready: ${modelToDownload.displayName}');
+          return true;
+        } else {
+          _emit('❌ Model download failed');
+          return false;
+        }
+      } finally {
+        await progressSubscription?.cancel();
       }
 
     } catch (e) {
@@ -331,82 +360,6 @@ class AIEdgeModelManager {
     }
   }
 
-  /// Download with detailed progress tracking
-  Future<bool> _downloadWithProgress(String url, String savePath) async {
-    try {
-      final request = http.Request('GET', Uri.parse(url));
-      final response = await http.Client().send(request);
-
-      if (response.statusCode != 200) {
-        _emit('❌ Download failed: HTTP ${response.statusCode}');
-        return false;
-      }
-
-      final contentLength = response.contentLength ?? 0;
-      final file = File(savePath);
-      final sink = file.openWrite();
-      
-      int downloadedBytes = 0;
-      
-      _emit('📊 Model size: ${_formatBytes(contentLength)}');
-
-      await response.stream.listen(
-        (chunk) {
-          sink.add(chunk);
-          downloadedBytes += chunk.length;
-          
-          if (contentLength > 0) {
-            final progress = downloadedBytes / contentLength;
-            _onProgress(progress);
-            
-            if (downloadedBytes % (1024 * 1024 * 10) == 0) { // Every 10MB
-              final progressPercent = (progress * 100).toStringAsFixed(1);
-              final downloaded = _formatBytes(downloadedBytes);
-              final total = _formatBytes(contentLength);
-              _emit('📥 Progress: $progressPercent% ($downloaded / $total)');
-            }
-          }
-        },
-        onDone: () async {
-          await sink.close();
-          _onProgress(1.0);
-          _emit('✅ Download completed: ${_formatBytes(downloadedBytes)}');
-        },
-        onError: (error) async {
-          await sink.close();
-          _emit('❌ Download stream error: $error');
-        },
-      ).asFuture();
-
-      return true;
-    } catch (e) {
-      _emit('❌ Download error: $e');
-      return false;
-    }
-  }
-
-  /// Get model URL from app configuration
-  Future<String?> _getModelUrlFromConfig() async {
-    try {
-      // Try to read from app assets first
-      const configPath = 'assets/config/ai_edge_config.json';
-      try {
-        await rootBundle.loadString(configPath);
-        // Parse JSON and extract model URL
-        // For now, return null to require manual configuration
-        return null;
-      } catch (e) {
-        // Config file doesn't exist, that's okay
-      }
-
-      // Try to read from SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getString('ai_edge_model_url');
-    } catch (e) {
-      _emit('⚠️ Could not load model URL from config: $e');
-      return null;
-    }
-  }
 
   /// Mark model as successfully downloaded
   Future<void> _markModelAsDownloaded() async {
@@ -572,8 +525,26 @@ class AIEdgeModelManager {
   /// Get current model version
   String get currentModelVersion => _currentModelVersion;
 
+  /// Get the downloaded model path for use by AI Edge
+  String? get modelPath => _modelPath;
+
+  /// Get available models
+  List<ModelMetadata> get availableModels => ModelAllowlist.allowedModels;
+
+  /// Get downloaded models list
+  Future<List<String>> getDownloadedModels() async {
+    return await _downloadService.getDownloadedModels();
+  }
+
+  /// Get download statistics
+  Future<Map<String, dynamic>> getDownloadStats() async {
+    return await _downloadService.getDownloadStats();
+  }
+
   /// Dispose resources
   void dispose() {
+    _downloadService.dispose();
+    _authService.dispose();
     _isDownloading = false;
     _emit('🧹 AI Edge Model Manager disposed');
   }

@@ -2,32 +2,52 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
-/// HuggingFace OAuth authentication service following Google AI Edge Gallery pattern
+/// HuggingFace authentication service following Google AI Edge Gallery pattern
+/// Supports both OAuth and direct token authentication
 class HuggingFaceAuthService {
   static const String _tokenKey = 'huggingface_access_token';
   static const String _refreshTokenKey = 'huggingface_refresh_token';
   static const String _tokenExpiryKey = 'huggingface_token_expiry';
   static const String _userInfoKey = 'huggingface_user_info';
+  static const String _authMethodKey = 'huggingface_auth_method';
 
-  // TODO: Replace with your HuggingFace OAuth App client ID
-  // You can create one at: https://huggingface.co/settings/oauth/apps
-  static const String clientId = 'your-huggingface-client-id'; 
-  
-  // TODO: Configure this redirect URI in your HuggingFace OAuth App
-  // and in your application's deep link settings (e.g., AndroidManifest.xml).
-  static const String redirectUri = 'com.example.frame_realtime_gemini_voicevision://oauth/huggingface';
+  // OAuth configuration - can be configured later for OAuth flow
+  static const String clientId = 'hf_oauth_frame_ai_edge'; // Placeholder - configure for OAuth
+  static const String redirectUri = 'com.brilliantlabs.frame.realtime://oauth/huggingface';
   static const String scope = 'read-repos';
   
   final void Function(String message)? logger;
+  static const MethodChannel _oauthChannel = MethodChannel('com.brilliantlabs.frame.realtime/oauth');
+  StreamSubscription<dynamic>? _oauthSubscription;
   
-  HuggingFaceAuthService({this.logger});
+  HuggingFaceAuthService({this.logger}) {
+    _setupOAuthCallbackListener();
+  }
 
   void _log(String message) {
     logger?.call(message);
+  }
+
+  /// Setup OAuth callback listener for deep link handling
+  void _setupOAuthCallbackListener() {
+    _oauthChannel.setMethodCallHandler((call) async {
+      if (call.method == 'oauth_callback') {
+        final callbackUrl = call.arguments as String;
+        _log('📱 OAuth callback received: $callbackUrl');
+        await handleAuthorizationCallback(callbackUrl);
+      }
+    });
+  }
+
+  /// Dispose the service and cleanup resources
+  void dispose() {
+    _oauthSubscription?.cancel();
+    _log('🧹 HuggingFace auth service disposed');
   }
 
   /// Check if user is authenticated
@@ -38,7 +58,13 @@ class HuggingFaceAuthService {
       
       if (token == null) return false;
       
-      // Check token expiry
+      // For direct token auth, validate token by testing API access
+      final authMethod = prefs.getString(_authMethodKey) ?? 'token';
+      if (authMethod == 'token') {
+        return await testApiAccess();
+      }
+      
+      // For OAuth, check token expiry
       final expiryTimestamp = prefs.getInt(_tokenExpiryKey);
       if (expiryTimestamp != null) {
         final expiryTime = DateTime.fromMillisecondsSinceEpoch(expiryTimestamp);
@@ -52,6 +78,72 @@ class HuggingFaceAuthService {
     } catch (e) {
       _log('Error checking authentication: $e');
       return false;
+    }
+  }
+
+  /// Set HuggingFace token directly (following Google AI Edge Gallery pattern)
+  Future<bool> setToken(String token) async {
+    try {
+      if (token.trim().isEmpty) {
+        _log('Empty token provided');
+        return false;
+      }
+
+      // Validate token format (should start with hf_)
+      if (!token.startsWith('hf_')) {
+        _log('Invalid token format - HuggingFace tokens should start with "hf_"');
+        return false;
+      }
+
+      _log('Setting HuggingFace token...');
+      
+      // Store token
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_tokenKey, token.trim());
+      await prefs.setString(_authMethodKey, 'token');
+      await prefs.remove(_refreshTokenKey); // Clear OAuth refresh token
+      await prefs.remove(_tokenExpiryKey); // Clear OAuth expiry
+      
+      // Test token validity
+      final isValid = await testApiAccess();
+      if (isValid) {
+        await _fetchUserInfo();
+        _log('✅ HuggingFace token validated successfully');
+        return true;
+      } else {
+        // Clear invalid token
+        await clearToken();
+        _log('❌ Invalid HuggingFace token');
+        return false;
+      }
+    } catch (e) {
+      _log('Error setting token: $e');
+      return false;
+    }
+  }
+
+  /// Clear stored token
+  Future<void> clearToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_tokenKey);
+      await prefs.remove(_authMethodKey);
+      await prefs.remove(_refreshTokenKey);
+      await prefs.remove(_tokenExpiryKey);
+      await prefs.remove(_userInfoKey);
+      _log('Token cleared');
+    } catch (e) {
+      _log('Error clearing token: $e');
+    }
+  }
+
+  /// Get authentication method (token or oauth)
+  Future<String> getAuthMethod() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_authMethodKey) ?? 'token';
+    } catch (e) {
+      return 'token';
     }
   }
 
@@ -83,10 +175,10 @@ class HuggingFaceAuthService {
   /// Start OAuth flow by launching the authorization URL in a browser.
   Future<void> startAuthenticationFlow() async {
     try {
-      if (clientId == 'your-huggingface-client-id') {
-        _log('❌ ERROR: HuggingFace client ID is not configured.');
-        _log('Please create an OAuth App in your HuggingFace settings and set the clientId.');
-        // Optionally, show an error to the user in the UI.
+      if (clientId == 'hf_oauth_frame_ai_edge') {
+        _log('❌ OAuth not configured. Please set up OAuth credentials or use token authentication.');
+        _log('For OAuth: Create an OAuth App in HuggingFace settings and configure clientId.');
+        _log('For Token: Use the "Enter Token" option instead.');
         return;
       }
       final authUrl = await getAuthorizationUrl();
@@ -276,6 +368,7 @@ class HuggingFaceAuthService {
 
       if (accessToken != null) {
         await prefs.setString(_tokenKey, accessToken);
+        await prefs.setString(_authMethodKey, 'oauth'); // Mark as OAuth authentication
       }
 
       if (refreshToken != null) {

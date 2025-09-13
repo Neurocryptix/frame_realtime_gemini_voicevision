@@ -116,6 +116,15 @@
                 <data android:scheme="frame" />
             </intent-filter>
             
+            <!-- HuggingFace OAuth deep link support (Google AI Edge Gallery pattern) -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.brilliantlabs.frame.realtime"
+                      android:host="oauth" />
+            </intent-filter>
+            
             <!-- Window theme metadata -->
             <meta-data 
                 android:name="io.flutter.embedding.android.NormalTheme"

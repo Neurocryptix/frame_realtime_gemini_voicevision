@@ -99,13 +99,14 @@ class ModelMetadata {
 /// Model allowlist following Google AI Edge Gallery pattern
 class ModelAllowlist {
   static const List<ModelMetadata> allowedModels = [
+    // Gemma 2 models (these actually exist on HuggingFace)
     ModelMetadata(
-      name: 'Gemma 3n 2B IT Int4',
-      displayName: 'Gemma 3 nano 2B (Instruct)',
+      name: 'Gemma 2B Instruct',
+      displayName: 'Gemma 2B (Instruct)',
       modelId: 'google/gemma-2b-it',
-      fileName: 'gemma-2b-it-q4_0.gguf',
-      sizeInBytes: 1500000000, // ~1.5GB
-      minMemoryMb: 4096,
+      fileName: 'model.safetensors',
+      sizeInBytes: 4940000000, // ~4.9GB
+      minMemoryMb: 6144,
       commitHash: 'main',
       defaultConfig: {
         'temperature': 0.7,
@@ -119,12 +120,12 @@ class ModelAllowlist {
       requiresAuth: true,
     ),
     ModelMetadata(
-      name: 'Gemma 3n 9B IT Int4',
-      displayName: 'Gemma 3 nano 9B (Instruct)',
-      modelId: 'google/gemma-9b-it',
-      fileName: 'gemma-9b-it-q4_0.gguf',
-      sizeInBytes: 5000000000, // ~5GB
-      minMemoryMb: 8192,
+      name: 'Gemma 7B Instruct',
+      displayName: 'Gemma 7B (Instruct)',
+      modelId: 'google/gemma-7b-it',
+      fileName: 'model.safetensors',
+      sizeInBytes: 17400000000, // ~17.4GB
+      minMemoryMb: 20480,
       commitHash: 'main',
       defaultConfig: {
         'temperature': 0.7,
@@ -134,8 +135,48 @@ class ModelAllowlist {
       },
       taskTypes: ['CHAT', 'PROMPT_LAB', 'TEXT_GENERATION', 'CODE_GENERATION'],
       description: 'High-performance instruction-tuned model for complex reasoning',
-      learnMoreUrl: 'https://huggingface.co/google/gemma-9b-it',
+      learnMoreUrl: 'https://huggingface.co/google/gemma-7b-it',
       requiresAuth: true,
+    ),
+    // Gemma 2 2B model (quantized version for mobile)
+    ModelMetadata(
+      name: 'Gemma 2 2B Instruct GGUF',
+      displayName: 'Gemma 2 2B (GGUF Q4)',
+      modelId: 'bartowski/gemma-2-2b-it-GGUF',
+      fileName: 'gemma-2-2b-it-Q4_K_M.gguf',
+      sizeInBytes: 1500000000, // ~1.5GB
+      minMemoryMb: 3072,
+      commitHash: 'main',
+      defaultConfig: {
+        'temperature': 0.7,
+        'topK': 40,
+        'topP': 0.95,
+        'maxTokens': 2048,
+      },
+      taskTypes: ['CHAT', 'PROMPT_LAB', 'TEXT_GENERATION'],
+      description: 'Quantized Gemma 2 model optimized for mobile deployment',
+      learnMoreUrl: 'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF',
+      requiresAuth: false,
+    ),
+    // Phi-3 Mini (Microsoft, small and efficient)
+    ModelMetadata(
+      name: 'Phi-3 Mini Instruct GGUF',
+      displayName: 'Phi-3 Mini (GGUF Q4)',
+      modelId: 'microsoft/Phi-3-mini-4k-instruct-gguf',
+      fileName: 'Phi-3-mini-4k-instruct-q4.gguf',
+      sizeInBytes: 2300000000, // ~2.3GB
+      minMemoryMb: 4096,
+      commitHash: 'main',
+      defaultConfig: {
+        'temperature': 0.7,
+        'topK': 40,
+        'topP': 0.95,
+        'maxTokens': 4096,
+      },
+      taskTypes: ['CHAT', 'PROMPT_LAB', 'TEXT_GENERATION', 'CODE_GENERATION'],
+      description: 'Efficient small language model optimized for mobile devices',
+      learnMoreUrl: 'https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf',
+      requiresAuth: false,
     ),
   ];
 

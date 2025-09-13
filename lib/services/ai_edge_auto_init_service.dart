@@ -142,7 +142,6 @@ class AIEdgeAutoInitService {
       } else {
         // Use direct URL download
         _modelManager.downloadModelAutomatically(
-          modelUrl: modelUrl!,
           showProgress: true,
         ).then((success) {
           downloadCompleter.complete(success);
