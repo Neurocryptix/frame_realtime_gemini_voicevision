@@ -380,7 +380,7 @@ To enable OAuth authentication:
       if (token == null) return;
 
       final response = await http.get(
-        Uri.parse('https://huggingface.co/api/whoami'),
+        Uri.parse('https://huggingface.co/api/whoami-v2'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -493,7 +493,7 @@ To enable OAuth authentication:
 
       _log('🌐 Making API request to HuggingFace...');
       final response = await http.get(
-        Uri.parse('https://huggingface.co/api/whoami'),
+        Uri.parse('https://huggingface.co/api/whoami-v2'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
