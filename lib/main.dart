@@ -28,6 +28,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 // AI Edge setup integration
 import 'package:frame_realtime_gemini_voicevision/services/ai_edge_auto_init_service.dart';
 import 'package:frame_realtime_gemini_voicevision/screens/model_download_screen.dart';
+import 'package:frame_realtime_gemini_voicevision/services/integrated_agentic_service.dart';
 
 // Agent system imports
 import 'package:frame_realtime_gemini_voicevision/agent/core/agent_core.dart';
@@ -249,6 +250,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   AgentCore? _agentCore;
   // AgentVectorService? _agentVectorService; // Legacy - using AI Edge RAG
   AgentManager? _agentManager;
+  IntegratedAgenticService? _integratedAgent;
 
   StreamSubscription<Uint8List>? _audioSubscription;
   StreamSubscription<String>? _frameLogSubscription;
@@ -311,6 +313,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     _agentCore?.dispose();
     // _agentVectorService?.dispose(); // Legacy - using AI Edge RAG
     _agentManager?.dispose();
+    _integratedAgent?.dispose();
     super.dispose();
   }
 
@@ -339,6 +342,9 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
       // Initialize agent manager (unified agent services)
       await _initializeAgentManager();
+
+      // Initialize integrated agentic service
+      await _initializeIntegratedAgent();
 
       _logEvent('🔧 Essential services initialized');
     } catch (e) {
@@ -373,6 +379,33 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       // Continue without agent - graceful degradation
       _agentCore = null;
       // _agentVectorService = null; // Legacy - using AI Edge RAG
+    }
+  }
+
+  /// Initialize integrated agentic service
+  Future<void> _initializeIntegratedAgent() async {
+    try {
+      _logEvent('🚀 Initializing Integrated Agentic Service...');
+
+      _integratedAgent = IntegratedAgenticService(logger: _logEvent);
+      final agentReady = await _integratedAgent!.initialize();
+
+      if (agentReady) {
+        _logEvent('✅ Integrated Agentic Service ready - On-device AI active');
+
+        // Enable agent processing by default
+        _integratedAgent!.setAgentEnabled(true);
+      } else {
+        final needsModel = await _integratedAgent!.needsModelDownload();
+        if (needsModel) {
+          _logEvent('⚠️ Agentic service requires model download');
+        } else {
+          _logEvent('⚠️ Agentic service initialized with limited capabilities');
+        }
+      }
+    } catch (e) {
+      _logEvent('⚠️ Integrated Agentic Service failed (continuing without): $e');
+      _integratedAgent = null;
     }
   }
 
@@ -829,6 +862,15 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     if (_agentManager?.isEnabled == true) {
       _agentManager!.processImage(jpegBytes);
     }
+
+    // INTEGRATED AGENT: Process photo through integrated agentic service
+    if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
+      _integratedAgent!.processImage(jpegBytes, metadata: {
+        'source': 'frame_camera',
+        'timestamp': DateTime.now().toIso8601String(),
+        'size': jpegBytes.length,
+      });
+    }
   }
 
   /// Handle audio received via RxAudio (exactly like original repository)
@@ -871,6 +913,28 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
           // Silently handle agent processing errors to avoid affecting main pipeline
           if (kDebugMode) {
             _logEvent('⚠️ Agent audio processing error: $e');
+          }
+        }
+      });
+    }
+
+    // INTEGRATED AGENT: Process audio through integrated agentic service (non-blocking)
+    if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
+      Future.microtask(() async {
+        try {
+          // Create independent copy for integrated agent processing
+          final agentAudio = Uint8List.fromList(pcm16x8);
+          final pcm16x16 = AudioUpsampler.upsample8kTo16k(agentAudio);
+          await _integratedAgent!.processAudio(pcm16x16, metadata: {
+            'source': 'frame_microphone',
+            'timestamp': DateTime.now().toIso8601String(),
+            'originalSize': pcm16x8.length,
+            'upsampledSize': pcm16x16.length,
+          });
+        } catch (e) {
+          // Silently handle integrated agent errors
+          if (kDebugMode) {
+            _logEvent('⚠️ Integrated agent audio processing error: $e');
           }
         }
       });
@@ -1124,11 +1188,18 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   }
 
   Widget _buildAgentStatusSection() {
+    // Use integrated agent status if available, otherwise fall back to agent manager
+    final integratedStatus = _integratedAgent?.getStatus();
     final agentStatus = _agentManager?.getStatus() ?? {};
-    final isAgentReady = agentStatus['isReady'] as bool? ?? false;
-    final isAgentEnabled = agentStatus['isEnabled'] as bool? ?? false;
-    final isAgentProcessing = agentStatus['isProcessing'] as bool? ?? false;
-    final services = agentStatus['services'] as Map<String, dynamic>? ?? {};
+
+    final isAgentReady = integratedStatus?['isReady'] as bool? ?? (agentStatus['isReady'] as bool? ?? false);
+    final isAgentEnabled = integratedStatus?['agentEnabled'] as bool? ?? (agentStatus['isEnabled'] as bool? ?? false);
+    final isAgentProcessing = integratedStatus?['isProcessing'] as bool? ?? (agentStatus['isProcessing'] as bool? ?? false);
+    final services = integratedStatus?['services'] as Map<String, dynamic>? ?? (agentStatus['services'] as Map<String, dynamic>? ?? {});
+
+    final totalQueries = integratedStatus?['totalQueries'] as int? ?? 0;
+    final totalDocuments = integratedStatus?['totalDocuments'] as int? ?? 0;
+    final lastActivity = integratedStatus?['lastActivity'] as String?;
 
     return Card(
       child: Padding(
@@ -1260,6 +1331,45 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
             const SizedBox(height: 8),
 
+            // Agent statistics (if integrated agent is active)
+            if (integratedStatus != null) ...[
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withAlpha(25),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    Column(
+                      children: [
+                        const Icon(Icons.help, color: Colors.blue, size: 16),
+                        Text('$totalQueries', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        const Text('Queries', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                    Column(
+                      children: [
+                        const Icon(Icons.storage, color: Colors.green, size: 16),
+                        Text('$totalDocuments', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        const Text('Documents', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                    if (lastActivity != null)
+                      Column(
+                        children: [
+                          const Icon(Icons.access_time, color: Colors.orange, size: 16),
+                          Text(lastActivity.substring(11, 19), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          const Text('Last Activity', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+
             // Agent controls
             Row(
               children: [
@@ -1267,7 +1377,11 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                   child: ElevatedButton.icon(
                     onPressed: isAgentReady
                         ? () {
-                            _agentManager?.setEnabled(!isAgentEnabled);
+                            if (integratedStatus != null) {
+                              _integratedAgent?.setAgentEnabled(!isAgentEnabled);
+                            } else {
+                              _agentManager?.setEnabled(!isAgentEnabled);
+                            }
                             setState(() {}); // Refresh UI
                           }
                         : null,
@@ -1285,9 +1399,16 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                 ElevatedButton.icon(
                   onPressed: (_isConnected && _lastPhoto != null)
                       ? () {
-                          _agentManager?.processImage(_lastPhoto!);
-                          _logEvent(
-                              '🤖 Manual agent image processing triggered');
+                          if (integratedStatus != null) {
+                            _integratedAgent?.processImage(_lastPhoto!, metadata: {
+                              'source': 'manual_trigger',
+                              'timestamp': DateTime.now().toIso8601String(),
+                            });
+                            _logEvent('🤖 Manual integrated agent image processing triggered');
+                          } else {
+                            _agentManager?.processImage(_lastPhoto!);
+                            _logEvent('🤖 Manual agent image processing triggered');
+                          }
                         }
                       : null,
                   icon: const Icon(Icons.image_search),
@@ -1295,6 +1416,49 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                 ),
               ],
             ),
+
+            // Query interface for integrated agent
+            if (integratedStatus != null && isAgentReady) ...[
+              const SizedBox(height: 16),
+              const Text('💭 Quick Query', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        if (_integratedAgent?.isReady == true) {
+                          _logEvent('🧠 Processing sample query...');
+                          try {
+                            final response = await _integratedAgent!.processQuery(
+                              'What can you tell me about Frame glasses?',
+                              context: {'source': 'manual_query'},
+                            );
+                            _logEvent('🤖 Agent response: ${response.response}');
+                          } catch (e) {
+                            _logEvent('❌ Query failed: $e');
+                          }
+                        }
+                      },
+                      child: const Text('Test Query'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () async {
+                      if (_integratedAgent?.isReady == true) {
+                        final success = await _integratedAgent!.storeKnowledge(
+                          content: 'User manually triggered knowledge storage at ${DateTime.now()}',
+                          metadata: {'source': 'manual_input'},
+                        );
+                        _logEvent(success ? '💾 Knowledge stored successfully' : '❌ Knowledge storage failed');
+                      }
+                    },
+                    child: const Text('Store Info'),
+                  ),
+                ],
+              ),
+            ],
 
             // Status messages
             if (!isAgentReady)

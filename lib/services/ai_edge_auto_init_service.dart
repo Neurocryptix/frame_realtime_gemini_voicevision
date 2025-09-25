@@ -30,11 +30,22 @@ class AIEdgeAutoInitService {
     );
   }
 
-  /// Check if this is the first app launch
+  /// Check if this is the first app launch (now includes model presence check)
   Future<bool> isFirstLaunch() async {
     try {
+      // First check if we have any downloaded models
+      final needsModel = await _modelManager.needsModelDownload();
+      if (needsModel) {
+        _emit('🔍 Model download needed - treating as first launch');
+        return true;
+      }
+
+      // If model exists, check preference flag
       final prefs = await SharedPreferences.getInstance();
-      return !(prefs.getBool(_firstLaunchKey) ?? false);
+      final prefFlag = !(prefs.getBool(_firstLaunchKey) ?? false);
+
+      _emit(prefFlag ? '🆕 First launch detected' : '✅ App previously initialized');
+      return prefFlag;
     } catch (e) {
       _emit('❌ Error checking first launch status: $e');
       return false;
