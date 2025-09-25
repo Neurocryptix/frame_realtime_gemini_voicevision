@@ -99,14 +99,72 @@ class ModelMetadata {
 /// Model allowlist following Google AI Edge Gallery pattern
 class ModelAllowlist {
   static const List<ModelMetadata> allowedModels = [
-    // Gemma 2 models (these actually exist on HuggingFace)
+    // Gemma 3 models (latest 2025 release - multimodal, multilingual, 128K context)
     ModelMetadata(
-      name: 'Gemma 2B Instruct',
-      displayName: 'Gemma 2B (Instruct)',
-      modelId: 'google/gemma-2b-it',
+      name: 'Gemma 3 1B Instruct GGUF',
+      displayName: 'Gemma 3 1B (GGUF Q4)',
+      modelId: 'unsloth/gemma-3-1b-it-GGUF',
+      fileName: 'gemma-3-1b-it-Q4_K_M.gguf',
+      sizeInBytes: 806000000, // ~806MB
+      minMemoryMb: 1536,
+      commitHash: 'main',
+      defaultConfig: {
+        'temperature': 0.7,
+        'topK': 40,
+        'topP': 0.95,
+        'maxTokens': 8192,
+      },
+      taskTypes: ['CHAT', 'PROMPT_LAB', 'TEXT_GENERATION', 'MULTIMODAL'],
+      description: 'Latest Gemma 3 1B model with multimodal capabilities and 128K context window',
+      learnMoreUrl: 'https://huggingface.co/unsloth/gemma-3-1b-it-GGUF',
+      requiresAuth: true,
+    ),
+    ModelMetadata(
+      name: 'Gemma 3 4B Instruct QAT',
+      displayName: 'Gemma 3 4B (QAT Q4)',
+      modelId: 'google/gemma-3-4b-it-qat-q4_0-gguf',
+      fileName: 'model.gguf',
+      sizeInBytes: 2600000000, // ~2.6GB
+      minMemoryMb: 4096,
+      commitHash: 'main',
+      defaultConfig: {
+        'temperature': 0.7,
+        'topK': 40,
+        'topP': 0.95,
+        'maxTokens': 8192,
+      },
+      taskTypes: ['CHAT', 'PROMPT_LAB', 'TEXT_GENERATION', 'MULTIMODAL', 'CODE_GENERATION'],
+      description: 'Official Google Gemma 3 4B with QAT quantization - preserves quality while reducing size',
+      learnMoreUrl: 'https://huggingface.co/google/gemma-3-4b-it-qat-q4_0-gguf',
+      requiresAuth: true,
+    ),
+    // Gemma 3n models (mobile-first edge models with PLE architecture)
+    ModelMetadata(
+      name: 'Gemma 3n E2B',
+      displayName: 'Gemma 3n E2B (Mobile-First)',
+      modelId: 'google/gemma-3n-E2B',
       fileName: 'model.safetensors',
-      sizeInBytes: 4940000000, // ~4.9GB
-      minMemoryMb: 6144,
+      sizeInBytes: 2000000000, // ~2GB effective memory footprint
+      minMemoryMb: 3072,
+      commitHash: 'main',
+      defaultConfig: {
+        'temperature': 0.7,
+        'topK': 40,
+        'topP': 0.95,
+        'maxTokens': 4096,
+      },
+      taskTypes: ['CHAT', 'PROMPT_LAB', 'TEXT_GENERATION', 'MULTIMODAL', 'REAL_TIME'],
+      description: 'Mobile-first Gemma 3n with Per-Layer Embeddings - processes 60fps on Pixel devices',
+      learnMoreUrl: 'https://huggingface.co/google/gemma-3n-E2B',
+      requiresAuth: true,
+    ),
+    ModelMetadata(
+      name: 'Gemma 3 270M Compact',
+      displayName: 'Gemma 3 270M (Ultra Compact)',
+      modelId: 'google/gemma-3-270m',
+      fileName: 'model.safetensors',
+      sizeInBytes: 550000000, // ~550MB
+      minMemoryMb: 1024,
       commitHash: 'main',
       defaultConfig: {
         'temperature': 0.7,
@@ -115,33 +173,14 @@ class ModelAllowlist {
         'maxTokens': 2048,
       },
       taskTypes: ['CHAT', 'PROMPT_LAB', 'TEXT_GENERATION'],
-      description: 'Lightweight instruction-tuned model optimized for conversational AI',
-      learnMoreUrl: 'https://huggingface.co/google/gemma-2b-it',
+      description: 'Ultra-compact Gemma 3 270M - most power-efficient model, 0.75% battery for 25 conversations',
+      learnMoreUrl: 'https://huggingface.co/google/gemma-3-270m',
       requiresAuth: true,
     ),
-    ModelMetadata(
-      name: 'Gemma 7B Instruct',
-      displayName: 'Gemma 7B (Instruct)',
-      modelId: 'google/gemma-7b-it',
-      fileName: 'model.safetensors',
-      sizeInBytes: 17400000000, // ~17.4GB
-      minMemoryMb: 20480,
-      commitHash: 'main',
-      defaultConfig: {
-        'temperature': 0.7,
-        'topK': 40,
-        'topP': 0.95,
-        'maxTokens': 4096,
-      },
-      taskTypes: ['CHAT', 'PROMPT_LAB', 'TEXT_GENERATION', 'CODE_GENERATION'],
-      description: 'High-performance instruction-tuned model for complex reasoning',
-      learnMoreUrl: 'https://huggingface.co/google/gemma-7b-it',
-      requiresAuth: true,
-    ),
-    // Gemma 2 2B model (quantized version for mobile)
+    // Keep one legacy Gemma 2 model for compatibility
     ModelMetadata(
       name: 'Gemma 2 2B Instruct GGUF',
-      displayName: 'Gemma 2 2B (GGUF Q4)',
+      displayName: 'Gemma 2 2B (Legacy GGUF)',
       modelId: 'bartowski/gemma-2-2b-it-GGUF',
       fileName: 'gemma-2-2b-it-Q4_K_M.gguf',
       sizeInBytes: 1500000000, // ~1.5GB
@@ -154,7 +193,7 @@ class ModelAllowlist {
         'maxTokens': 2048,
       },
       taskTypes: ['CHAT', 'PROMPT_LAB', 'TEXT_GENERATION'],
-      description: 'Quantized Gemma 2 model optimized for mobile deployment',
+      description: 'Legacy Gemma 2 model - use Gemma 3 models for better performance',
       learnMoreUrl: 'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF',
       requiresAuth: false,
     ),

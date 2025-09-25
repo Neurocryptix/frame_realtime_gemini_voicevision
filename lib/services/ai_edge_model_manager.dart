@@ -15,8 +15,8 @@ import 'huggingface_auth_service.dart';
 class AIEdgeModelManager {
   static const String _modelDownloadedKey = 'ai_edge_model_downloaded';
   static const String _modelVersionKey = 'ai_edge_model_version';
-  static const String _currentModelVersion = '2.0.0'; // Updated for consolidated system
-  static const String _gemmaModelName = 'gemma-2b-it-q4_0.gguf'; // Legacy compatibility
+  static const String _currentModelVersion = '3.0.0'; // Updated for Gemma 3 system
+  static const String _gemmaModelName = 'gemma-3-1b-it-Q4_K_M.gguf'; // Default Gemma 3 model
   static const String _modelChecksumKey = 'ai_edge_model_checksum'; // Legacy compatibility
   
   final void Function(String msg) _emit;
@@ -233,7 +233,7 @@ class AIEdgeModelManager {
       const modelOwner = 'google';
       const modelName = 'gemma-3';
       const framework = 'gguf';
-      const variation = 'gemma-3n-2b-it-int4';
+      const variation = 'gemma-3-1b-it-q4';
       
       const apiUrl = 'https://www.kaggle.com/api/v1/models/$modelOwner/$modelName/$framework/$variation';
       
