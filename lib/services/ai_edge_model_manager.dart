@@ -424,10 +424,42 @@ class AIEdgeModelManager {
   /// Get model path if downloaded
   Future<String?> getModelPath() async {
     if (_modelPath != null) return _modelPath;
-    
-    final prefs = await SharedPreferences.getInstance();
-    _modelPath = prefs.getString('ai_edge_model_path');
-    return _modelPath;
+
+    try {
+      // First try to get path from the download service (new system)
+      final downloadedModels = await _downloadService.getDownloadedModels();
+      if (downloadedModels.isNotEmpty) {
+        // Get the default model or first available model
+        final defaultModel = ModelAllowlist.getDefaultModel();
+        String? modelId;
+
+        if (defaultModel != null && downloadedModels.contains(defaultModel.modelId)) {
+          modelId = defaultModel.modelId;
+        } else {
+          modelId = downloadedModels.first;
+        }
+
+        _modelPath = await _downloadService.getModelPath(modelId);
+        return _modelPath;
+      }
+
+      // Fallback to legacy preferences method
+      final prefs = await SharedPreferences.getInstance();
+      _modelPath = prefs.getString('ai_edge_model_path');
+      return _modelPath;
+    } catch (e) {
+      _emit('⚠️ Error getting model path: $e');
+
+      // Final fallback to preferences
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        _modelPath = prefs.getString('ai_edge_model_path');
+        return _modelPath;
+      } catch (prefError) {
+        _emit('❌ Unable to get model path: $prefError');
+        return null;
+      }
+    }
   }
 
   /// Check available storage space
