@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 
 public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
-    private static final String CHANNEL = "com.example.frame_realtime_gemini_voicevision/ai_edge_rag";
+    private static final String CHANNEL = "com.brilliantlabs.frame.realtime/ai_edge_rag";
     private MethodChannel channel;
     private boolean isInitialized = false;
     private Map<String, String> documentStore = new HashMap<>(); // Temporary document storage
