@@ -145,11 +145,44 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                         result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                         return;
                     }
-                    
+
                     documentStore.clear();
-                    result.success(null);
+                    result.success(true);
                 } catch (Exception e) {
                     result.error("CLEAR_DOCUMENTS_FAILED", e.getMessage(), null);
+                }
+                break;
+
+            case "getDocumentCount":
+                try {
+                    if (!isInitialized) {
+                        result.success(0);
+                        return;
+                    }
+                    result.success(documentStore.size());
+                } catch (Exception e) {
+                    result.error("GET_DOCUMENT_COUNT_FAILED", e.getMessage(), null);
+                }
+                break;
+
+            case "getStatistics":
+                try {
+                    Map<String, Object> stats = new HashMap<>();
+                    stats.put("isInitialized", isInitialized);
+                    stats.put("documentCount", documentStore.size());
+                    stats.put("backend", "platform_channel");
+                    stats.put("version", "1.0.0");
+                    result.success(stats);
+                } catch (Exception e) {
+                    result.error("GET_STATISTICS_FAILED", e.getMessage(), null);
+                }
+                break;
+
+            case "isPlatformAvailable":
+                try {
+                    result.success(true); // Android platform is available
+                } catch (Exception e) {
+                    result.error("PLATFORM_CHECK_FAILED", e.getMessage(), null);
                 }
                 break;
                 

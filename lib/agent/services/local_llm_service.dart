@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter/services.dart';
 import '../models/agent_output.dart';
 import './ai_edge_llm_service.dart';
 
@@ -25,12 +24,11 @@ class LocalLLMService {
   // AI Edge LLM for on-device agentic processing
   AIEdgeLLMServiceImpl? _aiEdgeLLM; // AI Edge LLM service instance
   bool _aiEdgeInitialized = false;
-  bool _modelDownloadInProgress = false;
+  final bool _modelDownloadInProgress = false; // No longer used for downloads
   String? _modelPath;
 
-  // Model download configuration - Updated for Gemma 3
-  static const String _modelFileName = 'gemma-3n-2b-it-int4.bin'; // Gemma 3 compatible model - downloaded via Kaggle
-  static const String _modelAssetPath = 'assets/models/$_modelFileName'; // Not used - models downloaded via Kaggle
+  // Model configuration - Using downloaded AI Edge models
+  static const String _modelFileName = 'model.safetensors'; // AI Edge model file
 
   LocalLLMService({
     void Function(String)? logger,
@@ -77,19 +75,19 @@ class LocalLLMService {
         return false;
       }
 
+      // Use the model that's already downloaded and working (google/gemma-3-270m)
+      // The app logs show: "✅ AI Edge model ready: Gemma 3 270M (Ultra Compact)"
       final appDir = await getApplicationDocumentsDirectory();
-      _modelPath = '${appDir.path}/$_modelFileName';
+      _modelPath = '${appDir.path}/ai_edge_models/$_modelFileName'; // Use actual downloaded model path
       final modelFile = File(_modelPath!);
 
       if (!await modelFile.exists()) {
-        _logger?.call('📥 Model not found in app directory. Installing from assets...');
-        final installSuccess = await _installModel();
-        if (!installSuccess) {
-          _logger?.call('❌ Model installation failed.');
-          return false;
-        }
+        _logger?.call('⚠️ Downloaded AI Edge model not found at $_modelPath');
+        _logger?.call('ℹ️ Skipping asset installation - using integrated AI Edge service instead');
+        // Don't try to install from assets - the working model is managed by IntegratedAgenticService
+        return false;
       } else {
-        _logger?.call('✅ AI Edge model already exists in app directory.');
+        _logger?.call('✅ AI Edge model found at $_modelPath');
       }
 
       return await _initializeAIEdgeModel();
@@ -99,29 +97,6 @@ class LocalLLMService {
     }
   }
 
-  /// Install Gemma Nano model from assets to the app directory
-  Future<bool> _installModel() async {
-    if (_modelDownloadInProgress) {
-      _logger?.call('⏳ Model installation already in progress...');
-      return false;
-    }
-    try {
-      _modelDownloadInProgress = true;
-      _logger?.call('📥 Installing Gemma Nano model from assets...');
-      
-      final byteData = await rootBundle.load(_modelAssetPath);
-      final modelFile = File(_modelPath!);
-      await modelFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-
-      _logger?.call('✅ Model installed successfully to $_modelPath');
-      return true;
-    } catch (e) {
-      _logger?.call('❌ Model installation from assets failed: $e');
-      return false;
-    } finally {
-      _modelDownloadInProgress = false;
-    }
-  }
 
   /// Initialize AI Edge model after installation
   Future<bool> _initializeAIEdgeModel() async {
