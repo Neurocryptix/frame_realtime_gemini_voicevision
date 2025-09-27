@@ -45,11 +45,17 @@ class AgentManager {
   Future<bool> initialize() async {
     try {
       _logger?.call('🤖 Initializing Agent Manager...');
+      _logger?.call('🔧 Creating individual service instances...');
 
       // Initialize individual services
       _asrService = ASRService(logger: _logger);
       _llmService = LocalLLMService(logger: _logger);
       _ocrService = OCRService(logger: _logger);
+
+      _logger?.call('⏳ Initializing services in parallel...');
+      _logger?.call('🎤 Initializing ASR service...');
+      _logger?.call('🧠 Initializing Local LLM service...');
+      _logger?.call('👁️ Initializing OCR service...');
 
       // Initialize services in parallel
       final results = await Future.wait([
@@ -58,22 +64,30 @@ class AgentManager {
         _ocrService.initialize(),
       ]);
 
+      // Log individual service results
+      _logger?.call('📊 Service initialization results:');
+      _logger?.call('   ASR: ${results[0] ? "✅ Ready" : "❌ Failed"}');
+      _logger?.call('   LLM: ${results[1] ? "✅ Ready" : "❌ Failed"}');
+      _logger?.call('   OCR: ${results[2] ? "✅ Ready" : "❌ Failed"}');
+
       final allReady = results.every((ready) => ready);
 
       if (allReady) {
         _isReady = true;
         _isEnabled = true; // Auto-enable when ready
         _logger?.call('✅ Agent Manager ready - All services initialized');
+        _logger?.call('🛠️ Available tools: $_availableTools');
         return true;
       } else {
-        _logger?.call(
-            '⚠️ Agent Manager partial initialization - some services failed');
+        _logger?.call('⚠️ Agent Manager partial initialization - some services failed');
+        _logger?.call('🔍 Failed services will be bypassed during processing');
         _isReady = true; // Still usable with graceful degradation
         _isEnabled = true;
         return true;
       }
     } catch (e) {
       _logger?.call('❌ Agent Manager initialization failed: $e');
+      _logger?.call('🔍 Error details: ${e.toString()}');
       return false;
     }
   }

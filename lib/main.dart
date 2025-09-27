@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:simple_frame_app/simple_frame_app.dart';
 import 'package:frame_msg/rx/photo.dart';
 import 'package:frame_msg/rx/audio.dart';
@@ -355,30 +356,44 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   /// Initialize agent system (graceful degradation if fails)
   Future<void> _initializeAgentSystem() async {
     try {
+      _logEvent('🔧 Starting agent system initialization...');
+
       if (_vectorDb == null) {
-        _logEvent('⚠️ Agent system requires vector database');
+        _logEvent('⚠️ Agent system requires vector database - skipping initialization');
         return;
       }
 
+      // Check vector database status
+      final docCount = _vectorDb!.getDocumentCount();
+      _logEvent('📊 Vector database status: $docCount documents available');
+
       // Legacy agent vector service replaced by AI Edge RAG
+      _logEvent('📝 Note: Using AI Edge RAG instead of legacy vector service');
 
       // Initialize agent core (now without vector service dependency)
+      _logEvent('🤖 Initializing AgentCore...');
       _agentCore = AgentCore(
         logger: _logEvent,
       );
 
+      _logEvent('⏳ Running AgentCore initialization...');
       final agentReady = await _agentCore!.initialize();
+
       if (agentReady) {
         _logEvent('✅ Agent system ready (graceful mode)');
+        _logEvent('🔧 AgentCore initialized successfully');
       } else {
         _logEvent('⚠️ Agent system initialized with limited capabilities');
+        _logEvent('🔧 AgentCore initialization completed with warnings');
       }
     } catch (e) {
-      _logEvent(
-          '⚠️ Agent initialization failed (continuing without agent): $e');
+      _logEvent('❌ Agent initialization failed (continuing without agent): $e');
+      _logEvent('🔍 Error details: ${e.toString()}');
+
       // Continue without agent - graceful degradation
       _agentCore = null;
       // _agentVectorService = null; // Legacy - using AI Edge RAG
+      _logEvent('🛡️ Graceful degradation: app continues without agent system');
     }
   }
 
@@ -386,25 +401,40 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   Future<void> _initializeIntegratedAgent() async {
     try {
       _logEvent('🚀 Initializing Integrated Agentic Service...');
+      _logEvent('🔧 Creating IntegratedAgenticService instance...');
 
       _integratedAgent = IntegratedAgenticService(logger: _logEvent);
+
+      _logEvent('⏳ Running integrated agent initialization...');
       final agentReady = await _integratedAgent!.initialize();
 
       if (agentReady) {
         _logEvent('✅ Integrated Agentic Service ready - On-device AI active');
 
+        // Get status details
+        final status = _integratedAgent!.getStatus();
+        _logEvent('📊 Service status: ${status['services']}');
+        _logEvent('📚 Total documents: ${status['totalDocuments']}');
+
         // Enable agent processing by default
         _integratedAgent!.setAgentEnabled(true);
+        _logEvent('▶️ Agent processing enabled by default');
       } else {
+        _logEvent('⚠️ Integrated Agentic Service initialization incomplete');
+
         final needsModel = await _integratedAgent!.needsModelDownload();
         if (needsModel) {
-          _logEvent('⚠️ Agentic service requires model download');
+          _logEvent('📥 Agentic service requires model download');
+          _logEvent('🔍 Check model availability in Settings > AI Models');
         } else {
           _logEvent('⚠️ Agentic service initialized with limited capabilities');
+          _logEvent('🔍 Some components may not be available');
         }
       }
     } catch (e) {
-      _logEvent('⚠️ Integrated Agentic Service failed (continuing without): $e');
+      _logEvent('❌ Integrated Agentic Service failed (continuing without): $e');
+      _logEvent('🔍 Error details: ${e.toString()}');
+      _logEvent('🛡️ App will continue without integrated agent features');
       _integratedAgent = null;
     }
   }
@@ -413,12 +443,22 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   Future<void> _initializeAgentManager() async {
     try {
       _logEvent('🤖 Initializing Agent Manager...');
+      _logEvent('🔧 Creating AgentManager instance...');
 
       _agentManager = AgentManager(logger: _logEvent, vectorDbService: _vectorDb);
+
+      _logEvent('⏳ Running AgentManager initialization...');
+      _logEvent('🧩 Initializing ASR, LLM, and OCR services...');
+
       final agentReady = await _agentManager!.initialize();
 
       if (agentReady) {
         _logEvent('✅ Agent Manager ready - Real services active');
+
+        // Get detailed status
+        final status = _agentManager!.getStatus();
+        _logEvent('📊 Service readiness: ASR=${status['services']['asr']}, LLM=${status['services']['llm']}, OCR=${status['services']['ocr']}');
+        _logEvent('🛠️ Available tools: ${status['availableTools']}');
 
         // Listen to agent outputs for UI updates (read-only monitoring)
         _agentManager!.agentOutput.listen((result) {
@@ -470,11 +510,22 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
           });
         });
       } else {
-        _logEvent(
-            '⚠️ Agent Manager initialization issues (continuing with fallbacks)');
+        _logEvent('⚠️ Agent Manager initialization issues (continuing with fallbacks)');
+        _logEvent('🔍 Some services may not be available - check individual service status');
+
+        // Get failed services info
+        final status = _agentManager!.getStatus();
+        final services = status['services'] as Map<String, dynamic>? ?? {};
+        services.forEach((service, ready) {
+          if (ready != true) {
+            _logEvent('❌ Service not ready: $service');
+          }
+        });
       }
     } catch (e) {
-      _logEvent('⚠️ Agent Manager failed (continuing without): $e');
+      _logEvent('❌ Agent Manager failed (continuing without): $e');
+      _logEvent('🔍 Error details: ${e.toString()}');
+      _logEvent('🛡️ App will continue without Agent Manager features');
       _agentManager = null;
     }
   }
@@ -2187,7 +2238,56 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const Spacer(),
-                if (_eventLog.isNotEmpty)
+                if (_eventLog.isNotEmpty) ...[
+                  TextButton.icon(
+                    onPressed: () async {
+                      final logContent = _eventLog.join('\n');
+                      await Clipboard.setData(ClipboardData(text: logContent));
+                      _logEvent('📋 Event log copied to clipboard (${_eventLog.length} entries)');
+
+                      // Show feedback
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Copied ${_eventLog.length} log entries to clipboard'),
+                            duration: const Duration(seconds: 2),
+                            action: SnackBarAction(
+                              label: 'View',
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Event Log Preview'),
+                                    content: Container(
+                                      width: double.maxFinite,
+                                      height: 300,
+                                      child: SingleChildScrollView(
+                                        child: Text(
+                                          logContent,
+                                          style: const TextStyle(
+                                            fontFamily: 'monospace',
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Close'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copy'),
+                  ),
                   TextButton.icon(
                     onPressed: () {
                       setState(() {
@@ -2197,6 +2297,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                     icon: const Icon(Icons.clear),
                     label: const Text('Clear'),
                   ),
+                ],
               ],
             ),
             const SizedBox(height: 8),

@@ -47,53 +47,79 @@ class IntegratedAgenticService extends ChangeNotifier {
 
     try {
       _logger?.call('🚀 Initializing Integrated Agentic Service...');
+      _logger?.call('🔍 Step 1/4: Checking model availability...');
 
       // Step 1: Check if models are available
       final needsModel = await _modelManager.needsModelDownload();
       if (needsModel) {
         _logger?.call('❌ No models available - download required');
+        _logger?.call('📥 Please download models via Settings > AI Models');
         return false;
       }
+      _logger?.call('✅ Models available - proceeding with initialization');
 
       // Step 2: Initialize RAG service with model
+      _logger?.call('🔍 Step 2/4: Initializing RAG service...');
       final modelPath = await _modelManager.getModelPath();
       if (modelPath == null) {
         _logger?.call('❌ Model path not found');
         return false;
       }
+      _logger?.call('📂 Model path: $modelPath');
 
       _ragService = AIEdgeRagServiceImpl(logger: _logger);
+      _logger?.call('⏳ Running RAG service initialization...');
       final ragReady = await _ragService.initialize();
 
       if (!ragReady) {
-        _logger?.call('⚠️ RAG service initialization failed');
+        _logger?.call('❌ RAG service initialization failed');
+        _logger?.call('🔍 RAG service may not be available - check platform compatibility');
+      } else {
+        _logger?.call('✅ RAG service initialized successfully');
+
+        // Get RAG statistics
+        final ragStats = _ragService.getStatistics();
+        _logger?.call('📊 RAG stats: $ragStats');
       }
 
       // Step 3: Initialize agent service
+      _logger?.call('🔍 Step 3/4: Initializing agent service...');
       _agentService = AIEdgeAgentService(
         ragService: _ragService,
         logger: _logger,
       );
 
+      _logger?.call('⏳ Running agent service initialization...');
       final agentReady = await _agentService.initialize();
       if (!agentReady) {
-        _logger?.call('⚠️ Agent service initialization failed');
+        _logger?.call('❌ Agent service initialization failed');
+        _logger?.call('🔍 Agent processing may be limited');
+      } else {
+        _logger?.call('✅ Agent service initialized successfully');
+
+        // Get agent statistics
+        final agentStats = _agentService.getMemoryStatistics();
+        _logger?.call('📊 Agent stats: $agentStats');
       }
 
       _isInitialized = true;
       _isReady = ragReady && agentReady;
 
       if (_isReady) {
+        _logger?.call('🔍 Step 4/4: Adding initial knowledge...');
         _logger?.call('✅ Integrated Agentic Service ready');
         await _addInitialKnowledge();
       } else {
         _logger?.call('⚠️ Service initialized with limited capabilities');
+        _logger?.call('🔍 RAG ready: $ragReady, Agent ready: $agentReady');
       }
 
       notifyListeners();
       return _isReady;
     } catch (e) {
       _logger?.call('❌ Initialization failed: $e');
+      _logger?.call('🔍 Error details: ${e.toString()}');
+      _logger?.call('📋 Stack trace available in debug console');
       _isInitialized = true;
       _isReady = false;
       notifyListeners();
