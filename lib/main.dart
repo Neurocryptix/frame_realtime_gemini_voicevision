@@ -2258,7 +2258,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                                   context: context,
                                   builder: (context) => AlertDialog(
                                     title: const Text('Event Log Preview'),
-                                    content: Container(
+                                    content: SizedBox(
                                       width: double.maxFinite,
                                       height: 300,
                                       child: SingleChildScrollView(
