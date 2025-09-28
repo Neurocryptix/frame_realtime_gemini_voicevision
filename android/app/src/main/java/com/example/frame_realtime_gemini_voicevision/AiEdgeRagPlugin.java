@@ -195,11 +195,12 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                 }
                 
                 String docId = call.argument("documentId");
-                if (docId != null && documentStore.containsKey(docId)) {
+                if (docId != null && documentCache.containsKey(docId)) {
                     Map<String, Object> docMap = new HashMap<>();
+                    RagDocument doc = documentCache.get(docId);
                     docMap.put("id", docId);
-                    docMap.put("content", documentStore.get(docId));
-                    docMap.put("metadata", new HashMap<String, Object>());
+                    docMap.put("content", doc.getContent());
+                    docMap.put("metadata", doc.getMetadata());
                     result.success(docMap);
                 } else {
                     result.success(null);
@@ -214,7 +215,14 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                 
                 String removeId = call.argument("documentId");
                 if (removeId != null) {
-                    documentStore.remove(removeId);
+                    documentCache.remove(removeId);
+                    if (ragDatabase != null) {
+                        try {
+                            ragDatabase.removeDocument(removeId);
+                        } catch (Exception e) {
+                            // Log but don't fail - cache removal succeeded
+                        }
+                    }
                 }
                 result.success(true);
                 break;
