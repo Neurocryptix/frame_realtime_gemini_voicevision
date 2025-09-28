@@ -43,7 +43,24 @@ class AIEdgeRagServiceImpl implements AIEdgeRagService {
       _logger?.call('⚠️ AI Edge RAG not initialized');
       return false;
     }
-    return await _platformChannel.addDocument(content, metadata, documentId);
+
+    try {
+      final result = await _platformChannel.addDocument(content, metadata, documentId);
+      if (result) {
+        _logger?.call('✅ Document added to AI Edge RAG: ${content.substring(0, content.length.clamp(0, 50))}...');
+      } else {
+        _logger?.call('⚠️ Failed to add document to AI Edge RAG');
+      }
+      return result;
+    } catch (e) {
+      _logger?.call('❌ Platform exception adding document to AI Edge RAG: $e');
+      _logger?.call('🔍 Check if native AI Edge RAG plugin is properly configured');
+
+      // For now, continue without failing to maintain app stability
+      // In production, this would store in a local fallback database
+      _logger?.call('📝 Document would be stored in fallback storage: ${content.substring(0, content.length.clamp(0, 50))}...');
+      return false; // Return false but don't crash the app
+    }
   }
 
   @override
@@ -56,7 +73,18 @@ class AIEdgeRagServiceImpl implements AIEdgeRagService {
       _logger?.call('⚠️ AI Edge RAG not initialized');
       return [];
     }
-    return await _platformChannel.search(query, topK, threshold);
+
+    try {
+      final results = await _platformChannel.search(query, topK, threshold);
+      _logger?.call('🔍 AI Edge RAG search found ${results.length} results for: ${query.substring(0, query.length.clamp(0, 30))}...');
+      return results;
+    } catch (e) {
+      _logger?.call('❌ Platform exception during AI Edge RAG search: $e');
+      _logger?.call('🔍 Query: ${query.substring(0, query.length.clamp(0, 50))}...');
+
+      // Return empty results but don't crash
+      return [];
+    }
   }
 
   @override

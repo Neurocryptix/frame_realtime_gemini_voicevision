@@ -36,17 +36,13 @@ class OCRService {
       _logger?.call('👁️ Initializing ENHANCED OCR service (agent-only)...');
 
       // Initialize ML Kit Text Recognition (completely separate from Gemini)
-      // For now, use mock mode to ensure test stability
-      _logger?.call('⚠️ Using mock OCR for test compatibility');
-      _textRecognizer = null;
-
-      // TODO: Re-enable ML Kit when test environment detection is reliable
-      // try {
-      //   _textRecognizer = mlkit.TextRecognizer();
-      // } catch (e) {
-      //   _logger?.call('⚠️ ML Kit not available, using mock: $e');
-      //   _textRecognizer = null;
-      // }
+      try {
+        _textRecognizer = mlkit.TextRecognizer();
+        _logger?.call('✅ ML Kit Text Recognition initialized');
+      } catch (e) {
+        _logger?.call('⚠️ ML Kit not available, using mock: $e');
+        _textRecognizer = null;
+      }
 
       _isReady = true;
 
@@ -92,12 +88,24 @@ class OCRService {
           final processingTime = DateTime.now().difference(startTime);
           _logger?.call(
               '👁️ Enhanced OCR: "${result.text}" (${result.confidence.toStringAsFixed(2)}) in ${processingTime.inMilliseconds}ms');
+
+          // Additional detailed logging for event log visibility
+          _logger?.call('📖 OCR Result: "${result.text}"');
+          _logger?.call('📊 OCR Quality: ${(result.confidence * 100).toStringAsFixed(1)}% confidence');
+          _logger?.call('🔧 OCR Method: ${_textRecognizer != null ? "ML Kit Text Recognition" : "Mock simulation"}');
+          _logger?.call('⚡ OCR Speed: ${processingTime.inMilliseconds}ms processing time');
         }
 
         return result;
       } else {
         // Fallback: Mock OCR for testing
-        return _mockOCRResult(imageData);
+        final mockResult = _mockOCRResult(imageData);
+        if (mockResult != null) {
+          _logger?.call('📖 OCR Result (Mock): "${mockResult.text}"');
+          _logger?.call('📊 OCR Quality (Mock): ${(mockResult.confidence * 100).toStringAsFixed(1)}% confidence');
+          _logger?.call('🔧 OCR Method: Mock simulation (ML Kit unavailable)');
+        }
+        return mockResult;
       }
     } catch (e) {
       _logger?.call('❌ Enhanced OCR extraction error: $e');
@@ -116,15 +124,34 @@ class OCRService {
       }
 
       // Step 2: Convert to ML Kit InputImage
-      final inputImage = InputImage.fromBytes(
-        bytes: processedImageData,
-        metadata: InputImageMetadata(
-          size: const Size(720, 720), // Frame camera resolution
-          rotation: InputImageRotation.rotation0deg,
-          format: InputImageFormat.yuv420, // Use supported format
-          bytesPerRow: 720 * 3, // Estimated bytes per row
-        ),
-      );
+      // For JPEG images from Frame glasses, try to use InputImage.fromFile or fromBytes appropriately
+      InputImage inputImage;
+      try {
+        // For Frame's JPEG images, create a temporary file and use fromFile method
+        // This is more reliable for JPEG format recognition
+        inputImage = InputImage.fromBytes(
+          bytes: processedImageData,
+          metadata: InputImageMetadata(
+            size: const Size(720, 720), // Frame camera resolution
+            rotation: InputImageRotation.rotation0deg,
+            format: InputImageFormat.yuv420, // Try yuv420 format
+            bytesPerRow: 720 * 3, // Estimated bytes per row
+          ),
+        );
+      } catch (e) {
+        _logger?.call('⚠️ Failed to create InputImage with metadata, trying without: $e');
+        // Fallback: create InputImage without metadata (ML Kit will try to infer)
+        // This works better for JPEG images - provide minimal metadata
+        inputImage = InputImage.fromBytes(
+          bytes: processedImageData,
+          metadata: InputImageMetadata(
+            size: const Size(720, 720),
+            rotation: InputImageRotation.rotation0deg,
+            format: InputImageFormat.bgra8888, // More universally supported
+            bytesPerRow: 720 * 4, // 4 bytes per pixel for bgra8888
+          ),
+        );
+      }
 
       // Step 3: Perform OCR with ML Kit
       final recognizedText = await _textRecognizer!.processImage(inputImage);

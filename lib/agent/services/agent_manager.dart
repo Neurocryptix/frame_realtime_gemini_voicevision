@@ -121,6 +121,11 @@ class AgentManager {
         _logger?.call(
             '🎤 Agent ASR: "${asrResult.text}" (${asrResult.confidence.toStringAsFixed(2)})');
 
+        // Log the extracted ASR text clearly for event log visibility
+        _logger?.call('📝 ASR Text Extracted: "${asrResult.text}"');
+        _logger?.call('🔊 ASR Confidence: ${(asrResult.confidence * 100).toStringAsFixed(1)}%');
+        _logger?.call('⏱️ ASR Processing Time: ${asrResult.processingTime.inMilliseconds}ms');
+
         // Process with LLM if we have text
         await _processWithLLM(
           context: 'Audio transcription: ${asrResult.text}',
@@ -131,6 +136,9 @@ class AgentManager {
             'audioLength': audioData.length,
           },
         );
+      } else {
+        // Log when no ASR text is extracted
+        _logger?.call('🔇 No ASR text extracted from audio (${audioData.length} bytes)');
       }
     } catch (e) {
       _logger?.call('❌ Agent audio processing error: $e');
@@ -154,6 +162,12 @@ class AgentManager {
         _logger?.call(
             '👁️ Agent OCR: "${ocrResult.text}" (${ocrResult.confidence.toStringAsFixed(2)})');
 
+        // Log the extracted OCR text clearly for event log visibility
+        _logger?.call('📖 OCR Text Extracted: "${ocrResult.text}"');
+        _logger?.call('👀 OCR Confidence: ${(ocrResult.confidence * 100).toStringAsFixed(1)}%');
+        _logger?.call('🔍 OCR Text Blocks Found: ${ocrResult.textBlocks.length}');
+        _logger?.call('⏱️ OCR Processing Time: ${ocrResult.processingTime.inMilliseconds}ms');
+
         // Process with LLM if we have text
         await _processWithLLM(
           context: 'Image OCR text: ${ocrResult.text}',
@@ -166,7 +180,7 @@ class AgentManager {
           },
         );
       } else {
-        _logger?.call('👁️ Agent OCR: No text found in image');
+        _logger?.call('👁️ Agent OCR: No text found in image (${imageData.length} bytes)');
       }
     } catch (e) {
       _logger?.call('❌ Agent image processing error: $e');
@@ -311,6 +325,7 @@ class AgentManager {
           },
         );
 
+        _logger?.call('✅ Memory Storage Success: "$content" in category "$category"');
         return {
           'success': true,
           'action': 'stored',
@@ -319,7 +334,7 @@ class AgentManager {
           'id': 'db_${DateTime.now().millisecondsSinceEpoch}',
         };
       } catch (e) {
-        _logger?.call('❌ Database store failed: $e');
+        _logger?.call('❌ Memory Storage Failed: "$content" - Error: $e');
         return {
           'success': false,
           'action': 'store_failed',
@@ -329,6 +344,7 @@ class AgentManager {
     }
 
     // Fallback to mock if no database
+    _logger?.call('📝 Memory Storage (Mock): "$content" in category "$category" (no database available)');
     return {
       'success': true,
       'action': 'stored_mock',

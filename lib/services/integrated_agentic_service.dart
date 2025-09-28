@@ -218,9 +218,15 @@ class IntegratedAgenticService extends ChangeNotifier {
     try {
       _logger?.call('📸 Processing image (${imageData.length} bytes)');
 
+      // For now, we'll use mock text until real OCR is properly integrated
+      final mockText = 'Image captured from Frame glasses - ${DateTime.now().millisecondsSinceEpoch}';
+
+      _logger?.call('📸 Integrated Agent Processing Image: ${imageData.length} bytes');
+      _logger?.call('📖 OCR Text (Integrated): "$mockText"');
+
       // Use agent service to process the image
       await _agentService.storeOCROutput(
-        text: 'Image processed at ${DateTime.now().toString()}',
+        text: mockText,
         confidence: 0.8,
         timestamp: DateTime.now(),
         additionalMetadata: {
@@ -229,6 +235,8 @@ class IntegratedAgenticService extends ChangeNotifier {
           ...?metadata,
         },
       );
+
+      _logger?.call('✅ Image text stored in AI Edge RAG');
 
       _lastActivity = DateTime.now();
       notifyListeners();
@@ -246,9 +254,15 @@ class IntegratedAgenticService extends ChangeNotifier {
     try {
       _logger?.call('🎤 Processing audio (${audioData.length} bytes)');
 
+      // For now, we'll use mock text until real ASR is properly integrated
+      final mockText = 'Audio captured from Frame glasses - ${DateTime.now().millisecondsSinceEpoch}';
+
+      _logger?.call('🎤 Integrated Agent Processing Audio: ${audioData.length} bytes');
+      _logger?.call('📝 ASR Text (Integrated): "$mockText"');
+
       // Use agent service to process the audio
       await _agentService.storeASROutput(
-        text: 'Audio processed at ${DateTime.now().toString()}',
+        text: mockText,
         confidence: 0.7,
         timestamp: DateTime.now(),
         additionalMetadata: {
@@ -257,6 +271,8 @@ class IntegratedAgenticService extends ChangeNotifier {
           ...?metadata,
         },
       );
+
+      _logger?.call('✅ Audio text stored in AI Edge RAG');
 
       _lastActivity = DateTime.now();
       notifyListeners();

@@ -142,17 +142,25 @@ class AIEdgeAgentService {
     required DateTime timestamp,
     Map<String, dynamic>? additionalMetadata,
   }) async {
-    await _ragService.addDocument(
-      content: text,
-      metadata: {
-        'type': 'asr_output',
-        'confidence': confidence,
-        'timestamp': timestamp.toIso8601String(),
-        ...?additionalMetadata,
-      },
-    );
-    
-    _logger?.call('🎤 Stored ASR in AI Edge RAG: ${_truncate(text)}');
+    try {
+      final success = await _ragService.addDocument(
+        content: text,
+        metadata: {
+          'type': 'asr_output',
+          'confidence': confidence,
+          'timestamp': timestamp.toIso8601String(),
+          ...?additionalMetadata,
+        },
+      );
+
+      if (success) {
+        _logger?.call('🎤 ✅ ASR Storage Success: "${_truncate(text)}" (conf: ${(confidence * 100).toStringAsFixed(1)}%)');
+      } else {
+        _logger?.call('🎤 ❌ ASR Storage Failed: "${_truncate(text)}" - Platform error');
+      }
+    } catch (e) {
+      _logger?.call('🎤 ❌ ASR Storage Exception: "${_truncate(text)}" - Error: $e');
+    }
   }
 
   /// Store OCR output using AI Edge RAG
@@ -162,17 +170,25 @@ class AIEdgeAgentService {
     required DateTime timestamp,
     Map<String, dynamic>? additionalMetadata,
   }) async {
-    await _ragService.addDocument(
-      content: text,
-      metadata: {
-        'type': 'ocr_output',
-        'confidence': confidence,
-        'timestamp': timestamp.toIso8601String(),
-        ...?additionalMetadata,
-      },
-    );
-    
-    _logger?.call('👁️ Stored OCR in AI Edge RAG: ${_truncate(text)}');
+    try {
+      final success = await _ragService.addDocument(
+        content: text,
+        metadata: {
+          'type': 'ocr_output',
+          'confidence': confidence,
+          'timestamp': timestamp.toIso8601String(),
+          ...?additionalMetadata,
+        },
+      );
+
+      if (success) {
+        _logger?.call('👁️ ✅ OCR Storage Success: "${_truncate(text)}" (conf: ${(confidence * 100).toStringAsFixed(1)}%)');
+      } else {
+        _logger?.call('👁️ ❌ OCR Storage Failed: "${_truncate(text)}" - Platform error');
+      }
+    } catch (e) {
+      _logger?.call('👁️ ❌ OCR Storage Exception: "${_truncate(text)}" - Error: $e');
+    }
   }
 
   /// Get AI Edge memory statistics

@@ -100,6 +100,11 @@ class ASRService {
         final source = _speechEnabled ? "REAL" : "MOCK";
         _logger?.call(
             '🎤 Agent ASR ($source): "${result.text}" (${result.confidence.toStringAsFixed(2)})');
+
+        // Additional detailed logging for event log visibility
+        _logger?.call('🔤 ASR Result: "${result.text}"');
+        _logger?.call('📊 ASR Quality: ${(result.confidence * 100).toStringAsFixed(1)}% confidence');
+        _logger?.call('🔧 ASR Method: ${_speechEnabled ? "Speech-to-Text API" : "Mock simulation"}');
       }
 
       return result;
@@ -113,25 +118,64 @@ class ASRService {
   /// Real-time transcription using speech_to_text (SEPARATE from Gemini pipeline)
   Future<ASRResult?> _realTimeTranscription(Uint8List audioData) async {
     try {
-      // Add audio to buffer for processing (doesn't interfere with main stream)
-      _audioBuffer.addAll(audioData);
+      // For Frame glasses, the audio stream needs to be processed directly
+      if (_speechToText.isAvailable && !_speechToText.isListening) {
+        try {
+          String? recognizedText;
+          double confidence = 0.0;
 
-      // Use a timer to batch process audio chunks (non-blocking)
-      _processingTimer?.cancel();
-      _processingTimer = Timer(const Duration(milliseconds: 500), () async {
-        if (_audioBuffer.isNotEmpty && _speechToText.isAvailable) {
-          try {
-            // Simple approach: process audio without complex async completion
-            // This is a simplified approach for agent-only processing
-            _audioBuffer.clear(); // Clear buffer after attempting processing
-          } catch (e) {
-            _logger?.call('❌ Real ASR processing error: $e');
+          // Start listening for speech recognition
+          await _speechToText.listen(
+            onResult: (result) {
+              if (result.recognizedWords.isNotEmpty) {
+                recognizedText = result.recognizedWords;
+                confidence = result.confidence;
+              }
+            },
+            listenFor: const Duration(seconds: 3),
+            pauseFor: const Duration(seconds: 1),
+            listenOptions: SpeechListenOptions(partialResults: true),
+            localeId: 'en_US',
+            onSoundLevelChange: (level) {
+              // Optional: handle sound level changes
+            },
+          );
+
+          // Give some time for processing
+          await Future.delayed(const Duration(milliseconds: 1000));
+
+          // Stop listening
+          await _speechToText.stop();
+
+          // Check if we got results
+          if (recognizedText != null && recognizedText!.isNotEmpty) {
+            return ASRResult(
+              text: recognizedText!,
+              confidence: confidence,
+              processingTime: const Duration(milliseconds: 1000),
+              metadata: {
+                'audioLength': audioData.length,
+                'sampleRate': sampleRate,
+                'realImplementation': true,
+                'speechToTextUsed': true,
+              },
+            );
           }
+        } catch (e) {
+          _logger?.call('❌ Speech-to-text processing error: $e');
         }
-      });
+      }
 
-      // Return mock result for now (real implementation would need significant refactoring)
-      return await _mockTranscription(audioData);
+      // If real ASR fails or no results, fall back to mock but try to detect voice activity
+      if (_hasVoiceActivity(audioData)) {
+        _logger?.call('🎤 Voice activity detected but real ASR unavailable - using mock');
+        _logger?.call('🔊 Audio has voice activity (${audioData.length} bytes) - generating mock response');
+        return await _mockTranscription(audioData);
+      } else {
+        _logger?.call('🔇 No voice activity detected in audio (${audioData.length} bytes)');
+      }
+
+      return null;
     } catch (e) {
       _logger?.call('❌ Real-time transcription error: $e');
       return null;
