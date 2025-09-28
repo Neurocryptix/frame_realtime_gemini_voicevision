@@ -7,12 +7,8 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 
-// AI Edge RAG imports for real vector database functionality
-import com.google.ai.edge.localagents.rag.chains.ChainConfig;
-import com.google.ai.edge.localagents.rag.chains.RetrievalAndInferenceChain;
-import com.google.ai.edge.localagents.rag.memory.DefaultSemanticTextMemory;
-import com.google.ai.edge.localagents.rag.memory.MemoryItem;
-import com.google.ai.edge.localagents.rag.models.Embedder;
+// AI Edge RAG imports - using minimal implementation for compilation
+// Note: Full RAG implementation would require proper embedder and vector store setup
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,11 +24,9 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
     private MethodChannel channel;
     private boolean isInitialized = false;
 
-    // Real AI Edge RAG components
-    private DefaultSemanticTextMemory semanticMemory;
-    private RetrievalAndInferenceChain ragChain;
+    // Simplified implementation - using basic storage until full RAG setup
     private ExecutorService executorService;
-    private Map<String, MemoryItem> documentCache = new HashMap<>(); // Cache for quick access
+    private Map<String, String> documentCache = new HashMap<>(); // Cache for quick access
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
@@ -54,9 +48,6 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                     // Initialize executor service for async operations
                     executorService = Executors.newCachedThreadPool();
 
-                    // Initialize semantic memory for document storage
-                    semanticMemory = new DefaultSemanticTextMemory();
-
                     // Clear any existing documents and cache
                     documentCache.clear();
 
@@ -70,7 +61,7 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                 
             case "addDocument":
                 try {
-                    if (!isInitialized || semanticMemory == null) {
+                    if (!isInitialized) {
                         result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                         return;
                     }
@@ -93,13 +84,8 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                     final String finalDocumentId = documentId;
                     CompletableFuture<Boolean> addFuture = CompletableFuture.supplyAsync(() -> {
                         try {
-                            MemoryItem memoryItem = MemoryItem.create(finalDocumentId, content);
-                            List<MemoryItem> items = new ArrayList<>();
-                            items.add(memoryItem);
-
-                            // Add to semantic memory
-                            semanticMemory.recordBatchedMemoryItems(items);
-                            documentCache.put(finalDocumentId, memoryItem);
+                            // Store in simple cache for now
+                            documentCache.put(finalDocumentId, content);
                             return true;
                         } catch (Exception e) {
                             return false;
@@ -117,7 +103,7 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                 
             case "search":
                 try {
-                    if (!isInitialized || semanticMemory == null) {
+                    if (!isInitialized) {
                         result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                         return;
                     }
@@ -148,11 +134,10 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
 
                             // Simple text matching for now (until full RAG chain is set up)
                             int count = 0;
-                            for (Map.Entry<String, MemoryItem> entry : documentCache.entrySet()) {
+                            for (Map.Entry<String, String> entry : documentCache.entrySet()) {
                                 if (count >= finalTopK) break;
 
-                                MemoryItem item = entry.getValue();
-                                String content = item.getContent();
+                                String content = entry.getValue();
 
                                 // Simple contains check (placeholder for semantic search)
                                 if (content.toLowerCase().contains(query.toLowerCase())) {
@@ -191,9 +176,9 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                 String docId = call.argument("documentId");
                 if (docId != null && documentCache.containsKey(docId)) {
                     Map<String, Object> docMap = new HashMap<>();
-                    MemoryItem item = documentCache.get(docId);
+                    String content = documentCache.get(docId);
                     docMap.put("id", docId);
-                    docMap.put("content", item.getContent());
+                    docMap.put("content", content);
                     docMap.put("metadata", new HashMap<String, Object>());
                     result.success(docMap);
                 } else {
@@ -210,23 +195,23 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                 String removeId = call.argument("documentId");
                 if (removeId != null) {
                     documentCache.remove(removeId);
-                    // TODO: Remove from semantic memory when API supports it
+                    // Document removed from cache
                 }
                 result.success(true);
                 break;
                 
             case "clearDocuments":
                 try {
-                    if (!isInitialized || semanticMemory == null) {
+                    if (!isInitialized) {
                         result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                         return;
                     }
 
-                    // Clear documents from cache (semantic memory doesn't have clear method)
+                    // Clear documents from cache
                     CompletableFuture<Boolean> clearFuture = CompletableFuture.supplyAsync(() -> {
                         try {
                             documentCache.clear();
-                            // TODO: Clear semantic memory when API supports it
+                            // Cache cleared
                             return true;
                         } catch (Exception e) {
                             return false;
@@ -243,7 +228,7 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
 
             case "getDocumentCount":
                 try {
-                    if (!isInitialized || semanticMemory == null) {
+                    if (!isInitialized) {
                         result.success(0);
                         return;
                     }
@@ -273,7 +258,7 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                     stats.put("version", "0.1.0");
                     stats.put("embeddingDimension", 384); // Default dimension
 
-                    if (isInitialized && semanticMemory != null) {
+                    if (isInitialized) {
                         try {
                             CompletableFuture<Integer> countFuture = CompletableFuture.supplyAsync(() -> {
                                 try {
@@ -312,15 +297,7 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
             case "dispose":
                 try {
                     // Clean up all resources
-                    if (semanticMemory != null) {
-                        // Semantic memory doesn't need explicit close
-                        semanticMemory = null;
-                    }
-
-                    if (ragChain != null) {
-                        // RAG chain doesn't need explicit close
-                        ragChain = null;
-                    }
+                    // Nothing specific to clean up for simplified implementation
 
                     if (executorService != null && !executorService.isShutdown()) {
                         executorService.shutdown();
