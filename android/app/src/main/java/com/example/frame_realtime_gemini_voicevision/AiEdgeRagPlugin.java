@@ -8,11 +8,11 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 
 // AI Edge RAG imports for real vector database functionality
-import com.google.ai.edge.localagents.rag.RagDatabase;
-import com.google.ai.edge.localagents.rag.RagDocument;
-import com.google.ai.edge.localagents.rag.RagQuery;
-import com.google.ai.edge.localagents.rag.RagResult;
-import com.google.ai.edge.localagents.rag.RagConfig;
+import com.google.ai.edge.localagents.rag.chains.ChainConfig;
+import com.google.ai.edge.localagents.rag.chains.RetrievalAndInferenceChain;
+import com.google.ai.edge.localagents.rag.memory.DefaultSemanticTextMemory;
+import com.google.ai.edge.localagents.rag.memory.MemoryItem;
+import com.google.ai.edge.localagents.rag.models.Embedder;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,10 +29,10 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
     private boolean isInitialized = false;
 
     // Real AI Edge RAG components
-    private RagDatabase ragDatabase;
-    private RagConfig ragConfig;
+    private DefaultSemanticTextMemory semanticMemory;
+    private RetrievalAndInferenceChain ragChain;
     private ExecutorService executorService;
-    private Map<String, RagDocument> documentCache = new HashMap<>(); // Cache for quick access
+    private Map<String, MemoryItem> documentCache = new HashMap<>(); // Cache for quick access
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
@@ -54,16 +54,8 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                     // Initialize executor service for async operations
                     executorService = Executors.newCachedThreadPool();
 
-                    // Create RAG configuration
-                    ragConfig = RagConfig.builder()
-                        .setEmbeddingModelPath("") // Will be set from Flutter side
-                        .setVectorDatabasePath("") // Will be set from Flutter side
-                        .setMaxDocuments(1000) // Configurable limit
-                        .setEmbeddingDimension(384) // Standard embedding size
-                        .build();
-
-                    // Initialize RAG database
-                    ragDatabase = new RagDatabase(ragConfig);
+                    // Initialize semantic memory for document storage
+                    semanticMemory = new DefaultSemanticTextMemory();
 
                     // Clear any existing documents and cache
                     documentCache.clear();
@@ -78,7 +70,7 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                 
             case "addDocument":
                 try {
-                    if (!isInitialized || ragDatabase == null) {
+                    if (!isInitialized || semanticMemory == null) {
                         result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                         return;
                     }
@@ -97,18 +89,17 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                         documentId = "doc_" + System.currentTimeMillis();
                     }
 
-                    // Create RAG document with real embedding generation
-                    RagDocument ragDocument = RagDocument.builder()
-                        .setId(documentId)
-                        .setContent(content)
-                        .setMetadata(metadata != null ? metadata : new HashMap<>())
-                        .build();
-
-                    // Add document to RAG database (this generates embeddings automatically)
+                    // Create memory item for the semantic memory
+                    final String finalDocumentId = documentId;
                     CompletableFuture<Boolean> addFuture = CompletableFuture.supplyAsync(() -> {
                         try {
-                            ragDatabase.addDocument(ragDocument);
-                            documentCache.put(documentId, ragDocument);
+                            MemoryItem memoryItem = MemoryItem.create(finalDocumentId, content);
+                            List<MemoryItem> items = new ArrayList<>();
+                            items.add(memoryItem);
+
+                            // Add to semantic memory
+                            semanticMemory.recordBatchedMemoryItems(items);
+                            documentCache.put(finalDocumentId, memoryItem);
                             return true;
                         } catch (Exception e) {
                             return false;
@@ -126,7 +117,7 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                 
             case "search":
                 try {
-                    if (!isInitialized || ragDatabase == null) {
+                    if (!isInitialized || semanticMemory == null) {
                         result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                         return;
                     }
@@ -148,29 +139,32 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                         threshold = 0.3;
                     }
 
-                    // Perform real semantic search using AI Edge RAG
+                    // For now, return a simplified search result from cache
+                    // TODO: Implement full RAG chain search when embedder is configured
+                    final int finalTopK = topK;
                     CompletableFuture<List<Map<String, Object>>> searchFuture = CompletableFuture.supplyAsync(() -> {
                         try {
-                            // Create RAG query
-                            RagQuery ragQuery = RagQuery.builder()
-                                .setQuery(query)
-                                .setMaxResults(topK)
-                                .setSimilarityThreshold(threshold)
-                                .build();
-
-                            // Execute semantic search
-                            List<RagResult> ragResults = ragDatabase.search(ragQuery);
-
-                            // Convert to Flutter-compatible format
                             List<Map<String, Object>> resultsList = new ArrayList<>();
-                            for (RagResult ragResult : ragResults) {
-                                Map<String, Object> docMap = new HashMap<>();
-                                docMap.put("id", ragResult.getDocument().getId());
-                                docMap.put("content", ragResult.getDocument().getContent());
-                                docMap.put("metadata", ragResult.getDocument().getMetadata());
-                                docMap.put("score", ragResult.getSimilarityScore());
-                                docMap.put("relevance", ragResult.getRelevanceScore());
-                                resultsList.add(docMap);
+
+                            // Simple text matching for now (until full RAG chain is set up)
+                            int count = 0;
+                            for (Map.Entry<String, MemoryItem> entry : documentCache.entrySet()) {
+                                if (count >= finalTopK) break;
+
+                                MemoryItem item = entry.getValue();
+                                String content = item.getContent();
+
+                                // Simple contains check (placeholder for semantic search)
+                                if (content.toLowerCase().contains(query.toLowerCase())) {
+                                    Map<String, Object> docMap = new HashMap<>();
+                                    docMap.put("id", entry.getKey());
+                                    docMap.put("content", content);
+                                    docMap.put("metadata", new HashMap<String, Object>());
+                                    docMap.put("score", 0.8); // Placeholder score
+                                    docMap.put("relevance", 0.8); // Placeholder relevance
+                                    resultsList.add(docMap);
+                                    count++;
+                                }
                             }
 
                             return resultsList;
@@ -197,10 +191,10 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                 String docId = call.argument("documentId");
                 if (docId != null && documentCache.containsKey(docId)) {
                     Map<String, Object> docMap = new HashMap<>();
-                    RagDocument doc = documentCache.get(docId);
+                    MemoryItem item = documentCache.get(docId);
                     docMap.put("id", docId);
-                    docMap.put("content", doc.getContent());
-                    docMap.put("metadata", doc.getMetadata());
+                    docMap.put("content", item.getContent());
+                    docMap.put("metadata", new HashMap<String, Object>());
                     result.success(docMap);
                 } else {
                     result.success(null);
@@ -216,29 +210,23 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                 String removeId = call.argument("documentId");
                 if (removeId != null) {
                     documentCache.remove(removeId);
-                    if (ragDatabase != null) {
-                        try {
-                            ragDatabase.removeDocument(removeId);
-                        } catch (Exception e) {
-                            // Log but don't fail - cache removal succeeded
-                        }
-                    }
+                    // TODO: Remove from semantic memory when API supports it
                 }
                 result.success(true);
                 break;
                 
             case "clearDocuments":
                 try {
-                    if (!isInitialized || ragDatabase == null) {
+                    if (!isInitialized || semanticMemory == null) {
                         result.error("NOT_INITIALIZED", "AI Edge RAG not initialized", null);
                         return;
                     }
 
-                    // Clear documents from real RAG database
+                    // Clear documents from cache (semantic memory doesn't have clear method)
                     CompletableFuture<Boolean> clearFuture = CompletableFuture.supplyAsync(() -> {
                         try {
-                            ragDatabase.clearAllDocuments();
                             documentCache.clear();
+                            // TODO: Clear semantic memory when API supports it
                             return true;
                         } catch (Exception e) {
                             return false;
@@ -255,17 +243,17 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
 
             case "getDocumentCount":
                 try {
-                    if (!isInitialized || ragDatabase == null) {
+                    if (!isInitialized || semanticMemory == null) {
                         result.success(0);
                         return;
                     }
 
-                    // Get document count from real RAG database
+                    // Get document count from cache
                     CompletableFuture<Integer> countFuture = CompletableFuture.supplyAsync(() -> {
                         try {
-                            return ragDatabase.getDocumentCount();
+                            return documentCache.size();
                         } catch (Exception e) {
-                            return documentCache.size(); // Fallback to cache size
+                            return 0;
                         }
                     }, executorService);
 
@@ -282,16 +270,16 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                     Map<String, Object> stats = new HashMap<>();
                     stats.put("isInitialized", isInitialized);
                     stats.put("backend", "ai_edge_rag_native");
-                    stats.put("version", "1.0.0");
-                    stats.put("embeddingDimension", ragConfig != null ? ragConfig.getEmbeddingDimension() : 384);
+                    stats.put("version", "0.1.0");
+                    stats.put("embeddingDimension", 384); // Default dimension
 
-                    if (isInitialized && ragDatabase != null) {
+                    if (isInitialized && semanticMemory != null) {
                         try {
                             CompletableFuture<Integer> countFuture = CompletableFuture.supplyAsync(() -> {
                                 try {
-                                    return ragDatabase.getDocumentCount();
-                                } catch (Exception e) {
                                     return documentCache.size();
+                                } catch (Exception e) {
+                                    return 0;
                                 }
                             }, executorService);
 
@@ -324,9 +312,14 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
             case "dispose":
                 try {
                     // Clean up all resources
-                    if (ragDatabase != null) {
-                        ragDatabase.close();
-                        ragDatabase = null;
+                    if (semanticMemory != null) {
+                        // Semantic memory doesn't need explicit close
+                        semanticMemory = null;
+                    }
+
+                    if (ragChain != null) {
+                        // RAG chain doesn't need explicit close
+                        ragChain = null;
                     }
 
                     if (executorService != null && !executorService.isShutdown()) {
@@ -341,7 +334,6 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                     }
 
                     documentCache.clear();
-                    ragConfig = null;
                     isInitialized = false;
 
                     result.success(null);
