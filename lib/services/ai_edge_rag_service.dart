@@ -142,7 +142,44 @@ class AIEdgeRagServiceImpl implements AIEdgeRagService {
     int maxResults = 5,
     double similarityThreshold = 0.3
   }) async {
-    // TODO: Implement queryWithRAG
-    return AIEdgeRagResponse(documents: [], query: query, totalResults: 0, processingTime: Duration.zero);
+    if (!_isInitialized) {
+      _logger?.call('⚠️ AI Edge RAG not initialized');
+      return AIEdgeRagResponse(documents: [], query: query, totalResults: 0, processingTime: Duration.zero);
+    }
+
+    final stopwatch = Stopwatch()..start();
+
+    try {
+      // Use the real semantic search through platform channel
+      final results = await _platformChannel.search(query, maxResults, similarityThreshold);
+
+      // Convert platform results to RagDocument objects
+      final documents = results.map((result) => RagDocument(
+        id: result['id'] ?? '',
+        content: result['content'] ?? '',
+        metadata: {
+          ...Map<String, dynamic>.from(result['metadata'] ?? {}),
+          'score': result['score'] ?? 0.0,
+          'relevance': result['relevance'] ?? 0.0,
+        },
+        timestamp: DateTime.now(),
+      )).toList();
+
+      stopwatch.stop();
+
+      _logger?.call('🔍 RAG query completed: ${documents.length} results in ${stopwatch.elapsedMilliseconds}ms');
+
+      return AIEdgeRagResponse(
+        documents: documents,
+        query: query,
+        totalResults: documents.length,
+        processingTime: stopwatch.elapsed,
+      );
+
+    } catch (e) {
+      stopwatch.stop();
+      _logger?.call('❌ RAG query failed: $e');
+      return AIEdgeRagResponse(documents: [], query: query, totalResults: 0, processingTime: stopwatch.elapsed);
+    }
   }
 }

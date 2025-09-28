@@ -1752,27 +1752,61 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
   /// Perform database query and display results on Frame
   Future<void> _performFrameQuery(String queryText) async {
-    if (_vectorDb == null) return;
-
     try {
       _logEvent('🔍 Querying database: "$queryText"');
-      _logEvent('📊 Database has ${_vectorDb!.getDocumentCount()} documents');
-      
+
       // Update debug UI to show query processing
       setState(() {
         _lastDatabaseQuery = queryText;
         _lastDatabaseTime = DateTime.now();
       });
-      
+
       // Add delay before showing search message to prevent rapid Frame updates
       await Future.delayed(const Duration(milliseconds: 300));
       await _sendTextToFrame('Searching...');
-      
-      final results = await _vectorDb!.queryText(
-        queryText: queryText,
-        topK: 3, // Limit for screen display
-        threshold: 0.1, // Lower threshold for better matching
-      );
+
+      // Use real AI Edge RAG service for semantic search
+      List<Map<String, dynamic>> results = [];
+      int docCount = 0;
+
+      // Try AI Edge RAG first (real implementation)
+      try {
+        final aiEdgeService = AIEdgeRagServiceImpl(logger: _logEvent);
+        if (await aiEdgeService.initialize()) {
+          final ragResponse = await aiEdgeService.queryWithRAG(
+            query: queryText,
+            maxResults: 3,
+            similarityThreshold: 0.3,
+          );
+
+          results = ragResponse.documents.map((doc) => {
+            'id': doc.id,
+            'text': doc.content,
+            'content': doc.content,
+            'score': doc.metadata['score'] ?? 0.0,
+            'metadata': doc.metadata,
+            'document': doc.content,
+          }).toList();
+
+          docCount = await aiEdgeService.getDocumentCount();
+          _logEvent('📊 AI Edge RAG has $docCount documents');
+          aiEdgeService.dispose();
+        }
+      } catch (e) {
+        _logEvent('⚠️ AI Edge RAG query failed, using legacy: $e');
+      }
+
+      // Fallback to legacy VectorDbService if AI Edge RAG failed
+      if (results.isEmpty && _vectorDb != null) {
+        docCount = _vectorDb!.getDocumentCount();
+        _logEvent('📊 Legacy database has $docCount documents');
+
+        results = await _vectorDb!.queryText(
+          queryText: queryText,
+          topK: 3,
+          threshold: 0.1,
+        );
+      }
       
       _logEvent('📋 Query returned ${results.length} results');
 
