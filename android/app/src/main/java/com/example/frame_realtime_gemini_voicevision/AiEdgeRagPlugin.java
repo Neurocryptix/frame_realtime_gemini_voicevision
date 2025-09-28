@@ -52,10 +52,15 @@ public class AiEdgeRagPlugin implements FlutterPlugin, MethodCallHandler {
                     
                     String content = call.argument("content");
                     String documentId = call.argument("documentId");
-                    
-                    if (content == null || documentId == null) {
-                        result.error("INVALID_ARGUMENTS", "Content and documentId are required", null);
+
+                    if (content == null || content.trim().isEmpty()) {
+                        result.error("INVALID_ARGUMENTS", "Content is required and cannot be empty", null);
                         return;
+                    }
+
+                    // Generate documentId if not provided
+                    if (documentId == null || documentId.trim().isEmpty()) {
+                        documentId = "doc_" + System.currentTimeMillis();
                     }
                     
                     // TODO: Use real AI Edge RAG document storage

@@ -17,6 +17,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 // ObjectBox imports
 import 'package:frame_realtime_gemini_voicevision/services/vector_db_service.dart';
+import 'package:frame_realtime_gemini_voicevision/services/ai_edge_rag_service.dart';
 import 'package:frame_realtime_gemini_voicevision/gemini_realtime.dart'
     as gemini_realtime;
 import 'package:frame_realtime_gemini_voicevision/audio_upsampler.dart';
@@ -324,18 +325,46 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       // Note: Uncomment if flutter_blue_plus is available
       // FlutterBluePlus.setLogLevel(LogLevel.info);
 
-      // Initialize only essential services at startup
-      _vectorDb = VectorDbService(_logEvent);
-      // await _vectorDb!.initialize(store); // Disabled ObjectBox - using AI Edge RAG instead
-      
-      // Add sample data if database is empty (for testing queries)
-      final docCount = _vectorDb!.getDocumentCount();
-      if (docCount == 0) {
-        _logEvent('📝 Database empty, adding sample data...');
-        await _vectorDb!.addSampleData();
-        _logEvent('✅ Sample data added - ${_vectorDb!.getDocumentCount()} documents');
-      } else {
-        _logEvent('📊 Database has $docCount existing documents');
+      // Initialize AI Edge RAG service instead of legacy VectorDbService
+      try {
+        _logEvent('🚀 Initializing AI Edge RAG system...');
+        final aiEdgeService = AIEdgeRagServiceImpl(logger: _logEvent);
+        final initSuccess = await aiEdgeService.initialize();
+
+        if (initSuccess) {
+          _logEvent('✅ AI Edge RAG initialized successfully');
+
+          // Check document count from AI Edge RAG
+          final docCount = await aiEdgeService.getDocumentCount();
+          _logEvent('📊 AI Edge RAG has $docCount documents');
+
+          // Add sample data if needed
+          if (docCount == 0) {
+            _logEvent('📝 Adding sample data to AI Edge RAG...');
+            await aiEdgeService.addSampleData();
+            final newDocCount = await aiEdgeService.getDocumentCount();
+            _logEvent('✅ Sample data added - $newDocCount documents in AI Edge RAG');
+
+            // Update legacy VectorDbService count for consistency
+            VectorDbService.updateDocumentCount(newDocCount);
+          } else {
+            // Sync existing count with legacy service
+            VectorDbService.updateDocumentCount(docCount);
+          }
+
+          // Keep legacy VectorDbService for backward compatibility but mark it as using AI Edge backend
+          _vectorDb = VectorDbService(_logEvent);
+          await _vectorDb!.initialize(null); // Initialize stub
+        } else {
+          _logEvent('⚠️ AI Edge RAG initialization failed, using legacy stub');
+          _vectorDb = VectorDbService(_logEvent);
+          await _vectorDb!.initialize(null);
+        }
+      } catch (e) {
+        _logEvent('❌ AI Edge RAG initialization error: $e');
+        _logEvent('📦 Falling back to legacy VectorDbService stub');
+        _vectorDb = VectorDbService(_logEvent);
+        await _vectorDb!.initialize(null);
       }
 
       // Initialize agent system (non-blocking)
@@ -1671,8 +1700,28 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       await Future.delayed(const Duration(seconds: 2)); // Reduced from 3 to 2 seconds
       
       // Simulate speech-to-text result (in real implementation, would use captured audio)
-      const mockQuery = 'Frame glasses'; // This would come from speech recognition - should match sample data
-      const mockConfidence = 0.85; // Simulated confidence
+      // Use agent ASR service if available for more realistic queries
+      String mockQuery = 'what can you tell me about smart glasses?';
+      double mockConfidence = 0.85;
+
+      // Try to get query from agent ASR if available
+      if (_agentManager != null && _agentManager!.isReady) {
+        try {
+          // Use the agent's ASR service to generate a more realistic query
+          await _agentManager!.processAudio(Uint8List(1600)); // Minimal audio data for demo
+          // For now, keep using fallback queries until real audio input is implemented
+          final queries = [
+            'what are Frame glasses?',
+            'how do Frame glasses work?',
+            'tell me about smart glasses features',
+            'what can I do with Frame glasses?',
+          ];
+          mockQuery = queries[DateTime.now().millisecond % queries.length];
+          _logEvent('🎤 Using varied query: "$mockQuery"');
+        } catch (e) {
+          _logEvent('⚠️ Agent ASR unavailable, using fallback query');
+        }
+      }
       
       // Update debug UI with simulated ASR result
       setState(() {

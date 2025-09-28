@@ -95,7 +95,45 @@ class AIEdgeRagServiceImpl implements AIEdgeRagService {
 
   @override
   Future<void> addSampleData() async {
-    // TODO: Implement addSampleData
+    if (!_isInitialized) {
+      _logger?.call('⚠️ AI Edge RAG not initialized');
+      return;
+    }
+
+    // Add sample documents for testing
+    final sampleDocuments = [
+      {
+        'content': 'Frame glasses are smart wearable devices that provide augmented reality features and AI assistance.',
+        'metadata': {'category': 'device_info', 'type': 'product'},
+      },
+      {
+        'content': 'You can use voice commands to control Frame glasses and access information hands-free.',
+        'metadata': {'category': 'usage', 'type': 'instruction'},
+      },
+      {
+        'content': 'Frame glasses have a built-in camera for taking photos and videos.',
+        'metadata': {'category': 'features', 'type': 'capability'},
+      },
+    ];
+
+    for (int i = 0; i < sampleDocuments.length; i++) {
+      final doc = sampleDocuments[i];
+      await addDocument(
+        content: doc['content'] as String,
+        metadata: doc['metadata'] as Map<String, dynamic>,
+        documentId: 'sample_$i',
+      );
+    }
+
+    _logger?.call('✅ Added ${sampleDocuments.length} sample documents to AI Edge RAG');
+  }
+
+  /// Get document count from platform channel
+  Future<int> getDocumentCount() async {
+    if (!_isInitialized) {
+      return 0;
+    }
+    return await _platformChannel.getDocumentCount();
   }
 
   @override

@@ -7,6 +7,7 @@ class VectorDbService {
   // STUB: All ObjectBox functionality replaced by AI Edge RAG
   bool _isReady = false;
   final void Function(String msg) _emit;
+  static int _documentCount = 0; // Track documents added through AI Edge RAG
 
   VectorDbService(this._emit);
 
@@ -49,7 +50,12 @@ class VectorDbService {
 
   /// Get document count - STUB
   int getDocumentCount() {
-    return 0; // STUB: Actual count in AI Edge system
+    return _documentCount; // Return tracked count from AI Edge system
+  }
+
+  /// Update document count (called from AI Edge RAG)
+  static void updateDocumentCount(int count) {
+    _documentCount = count;
   }
 
   /// Get stats - STUB
