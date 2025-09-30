@@ -15,9 +15,18 @@ class FrameAudioStreamingService {
   int _currentSampleRate = 16000;
   int _currentBitDepth = 8;
 
-  // Audio data stream
+  // Audio data stream with backpressure handling
   final StreamController<Uint8List> _audioDataController =
-      StreamController<Uint8List>.broadcast();
+      StreamController<Uint8List>.broadcast(
+    onListen: () {},
+    onCancel: () {},
+  );
+
+  // Buffer for backpressure control
+  final List<Uint8List> _audioBuffer = [];
+  static const int _maxBufferSize = 100; // Max buffered packets
+  int _droppedPackets = 0;
+
   Stream<Uint8List> get audioStream => _audioDataController.stream;
 
   // Log stream for UI
@@ -85,7 +94,7 @@ class FrameAudioStreamingService {
 
   // Custom script deployment removed - using official simple_frame_app deployment pattern
 
-  /// Handle data messages from Frame
+  /// Handle data messages from Frame with backpressure control
   void _handleFrameData(List<int> data) {
     if (data.isEmpty) return;
 
@@ -99,8 +108,21 @@ class FrameAudioStreamingService {
         _packetsReceived++;
         _bytesReceived += audioData.length;
 
-        // Emit to stream
-        _audioDataController.add(audioData);
+        // Backpressure control: only add if buffer not full
+        if (_audioBuffer.length < _maxBufferSize) {
+          _audioBuffer.add(audioData);
+
+          // Flush buffer to stream
+          while (_audioBuffer.isNotEmpty) {
+            _audioDataController.add(_audioBuffer.removeAt(0));
+          }
+        } else {
+          // Drop packet if buffer full
+          _droppedPackets++;
+          if (_droppedPackets % 10 == 0) {
+            _emit('⚠️ Audio buffer full - dropped $_droppedPackets packets');
+          }
+        }
 
         // Log statistics periodically
         if (_packetsReceived % 100 == 0) {
@@ -108,7 +130,7 @@ class FrameAudioStreamingService {
               DateTime.now().difference(_streamStartTime!).inSeconds;
           final kbps = duration > 0 ? (_bytesReceived / 1024) / duration : 0;
           _emit(
-              '📊 Audio: $_packetsReceived packets, ${(_bytesReceived / 1024).toStringAsFixed(1)}KB, ${kbps.toStringAsFixed(1)} KB/s');
+              '📊 Audio: $_packetsReceived packets, ${(_bytesReceived / 1024).toStringAsFixed(1)}KB, ${kbps.toStringAsFixed(1)} KB/s${_droppedPackets > 0 ? ", $_droppedPackets dropped" : ""}');
         }
       }
     }

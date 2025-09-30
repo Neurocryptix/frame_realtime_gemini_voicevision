@@ -30,6 +30,9 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 // Resource monitoring
 import 'package:frame_realtime_gemini_voicevision/widgets/resource_monitor.dart';
 
+// Performance utilities
+import 'package:frame_realtime_gemini_voicevision/utils/debouncer.dart';
+
 // AI Edge setup integration
 import 'package:frame_realtime_gemini_voicevision/services/ai_edge_auto_init_service.dart';
 import 'package:frame_realtime_gemini_voicevision/screens/model_download_screen.dart';
@@ -278,6 +281,10 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   Stream<Uint8List>? _frameAudioSampleStream;
   StreamSubscription<Uint8List>? _frameAudioSubs;
 
+  // Performance optimizations
+  final _agentUpdateThrottler = Throttler(duration: const Duration(milliseconds: 100));
+  final _photoUpdateThrottler = Throttler(duration: const Duration(milliseconds: 200));
+
   @override
   void initState() {
     super.initState();
@@ -297,6 +304,10 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
   @override
   void dispose() {
+    // Dispose throttlers
+    _agentUpdateThrottler.dispose();
+    _photoUpdateThrottler.dispose();
+
     _scrollController.dispose();
     _queryController.dispose();
     _audioSubscription?.cancel();
@@ -503,45 +514,47 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                 '🔧 Tools executed: ${result.toolCalls.map((t) => t.name).join(", ")}');
           }
           
-          // Update debugging UI state (non-intrusive)
-          setState(() {
-            // LLM debugging info
-            _lastLLMOutput = result.llmResponse;
-            _lastLLMProcessingTime = result.processingTime;
-            _lastLLMTime = result.timestamp;
-            _totalLLMRequests++;
-            
-            // Extract ASR info if available
-            if (result.inputData.containsKey('transcription')) {
-              _lastASRText = result.inputData['transcription']?.toString() ?? 'Empty';
-              _lastASRConfidence = (result.inputData['confidence'] as num?)?.toDouble() ?? 0.0;
-              _lastASRTime = result.timestamp;
-              _totalASRProcessed++;
-              _lastLLMInput = 'Speech: "$_lastASRText"';
-            }
-            
-            // Extract OCR info if available  
-            if (result.inputData.containsKey('ocrText')) {
-              _lastLLMInput = 'Image Text: "${result.inputData['ocrText']}';
-            }
-            
-            // Extract database operations from tool results
-            for (final toolResult in result.toolResults.values) {
-              if (toolResult is Map<String, dynamic>) {
-                if (toolResult['action'] == 'retrieved') {
-                  _lastDatabaseQuery = toolResult['query']?.toString() ?? 'Unknown query';
-                  _lastDatabaseResults = List<Map<String, dynamic>>.from(
-                      toolResult['results'] as List? ?? []);
-                  _lastDatabaseTime = result.timestamp;
-                  _totalDatabaseQueries++;
-                } else if (toolResult['action'] == 'stored') {
-                  _lastDatabaseQuery = 'STORE: ${toolResult['content']}';
-                  _lastDatabaseResults = [];
-                  _lastDatabaseTime = result.timestamp;
-                  _totalDatabaseQueries++;
+          // Update debugging UI state (throttled to reduce rebuild frequency)
+          _agentUpdateThrottler(() {
+            setState(() {
+              // LLM debugging info
+              _lastLLMOutput = result.llmResponse;
+              _lastLLMProcessingTime = result.processingTime;
+              _lastLLMTime = result.timestamp;
+              _totalLLMRequests++;
+
+              // Extract ASR info if available
+              if (result.inputData.containsKey('transcription')) {
+                _lastASRText = result.inputData['transcription']?.toString() ?? 'Empty';
+                _lastASRConfidence = (result.inputData['confidence'] as num?)?.toDouble() ?? 0.0;
+                _lastASRTime = result.timestamp;
+                _totalASRProcessed++;
+                _lastLLMInput = 'Speech: "$_lastASRText"';
+              }
+
+              // Extract OCR info if available
+              if (result.inputData.containsKey('ocrText')) {
+                _lastLLMInput = 'Image Text: "${result.inputData['ocrText']}';
+              }
+
+              // Extract database operations from tool results
+              for (final toolResult in result.toolResults.values) {
+                if (toolResult is Map<String, dynamic>) {
+                  if (toolResult['action'] == 'retrieved') {
+                    _lastDatabaseQuery = toolResult['query']?.toString() ?? 'Unknown query';
+                    _lastDatabaseResults = List<Map<String, dynamic>>.from(
+                        toolResult['results'] as List? ?? []);
+                    _lastDatabaseTime = result.timestamp;
+                    _totalDatabaseQueries++;
+                  } else if (toolResult['action'] == 'stored') {
+                    _lastDatabaseQuery = 'STORE: ${toolResult['content']}';
+                    _lastDatabaseResults = [];
+                    _lastDatabaseTime = result.timestamp;
+                    _totalDatabaseQueries++;
+                  }
                 }
               }
-            }
+            });
           });
         });
       } else {
@@ -933,16 +946,18 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       _logEvent('📸 Photo sent to Gemini for analysis');
     }
 
-    // Update UI with latest image (original repo style)
-    try {
-      setState(() {
-        _lastPhoto = jpegBytes;
-        _image = Image.memory(jpegBytes, gaplessPlayback: true);
-      });
-      _logEvent('✅ Photo display updated in UI via RxPhoto');
-    } catch (e) {
-      _logEvent('❌ Photo display update failed: $e');
-    }
+    // Update UI with latest image (throttled to reduce rebuild frequency)
+    _photoUpdateThrottler(() {
+      try {
+        setState(() {
+          _lastPhoto = jpegBytes;
+          _image = Image.memory(jpegBytes, gaplessPlayback: true);
+        });
+        _logEvent('✅ Photo display updated in UI via RxPhoto');
+      } catch (e) {
+        _logEvent('❌ Photo display update failed: $e');
+      }
+    });
 
     // AGENT INTEGRATION: Process photo through agent system (parallel to Gemini)
     if (_agentManager?.isEnabled == true) {
