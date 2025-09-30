@@ -27,6 +27,9 @@ import 'package:frame_realtime_gemini_voicevision/audio_upsampler.dart';
 import 'package:frame_realtime_gemini_voicevision/foreground_service.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+// Resource monitoring
+import 'package:frame_realtime_gemini_voicevision/widgets/resource_monitor.dart';
+
 // AI Edge setup integration
 import 'package:frame_realtime_gemini_voicevision/services/ai_edge_auto_init_service.dart';
 import 'package:frame_realtime_gemini_voicevision/screens/model_download_screen.dart';
@@ -77,7 +80,10 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const AppInitializer(),
+      home: const ResourceMonitor(
+        enabled: true,
+        child: AppInitializer(),
+      ),
     );
   }
 }
