@@ -124,16 +124,17 @@ class ASRService {
           String? recognizedText;
           double confidence = 0.0;
 
-          // Start listening for speech recognition
-          await _speechToText.listen(
+          // Start listening for speech recognition (ASYNC, NON-BLOCKING)
+          // Use unawaited to prevent blocking - results come via callback
+          _speechToText.listen(
             onResult: (result) {
               if (result.recognizedWords.isNotEmpty) {
                 recognizedText = result.recognizedWords;
                 confidence = result.confidence;
               }
             },
-            listenFor: const Duration(seconds: 3),
-            pauseFor: const Duration(seconds: 1),
+            listenFor: const Duration(milliseconds: 800), // Reduced from 3s to minimize processing time
+            pauseFor: const Duration(milliseconds: 500), // Reduced from 1s
             listenOptions: SpeechListenOptions(partialResults: true),
             localeId: 'en_US',
             onSoundLevelChange: (level) {
@@ -141,23 +142,24 @@ class ASRService {
             },
           );
 
-          // Give some time for processing
-          await Future.delayed(const Duration(milliseconds: 1000));
+          // Reduced wait time to minimize blocking (from 1000ms to 400ms)
+          await Future.delayed(const Duration(milliseconds: 400));
 
-          // Stop listening
-          await _speechToText.stop();
+          // Stop listening (don't await to reduce blocking)
+          _speechToText.stop();
 
           // Check if we got results
           if (recognizedText != null && recognizedText!.isNotEmpty) {
             return ASRResult(
               text: recognizedText!,
               confidence: confidence,
-              processingTime: const Duration(milliseconds: 1000),
+              processingTime: const Duration(milliseconds: 400), // Updated to reflect actual processing time
               metadata: {
                 'audioLength': audioData.length,
                 'sampleRate': sampleRate,
                 'realImplementation': true,
                 'speechToTextUsed': true,
+                'optimized': true, // Flag to indicate optimized version
               },
             );
           }

@@ -107,15 +107,23 @@ class AgentManager {
   }
 
   /// Process audio through agent pipeline (parallel to Gemini)
+  /// OPTIMIZED: Non-blocking, skip if already processing
   Future<void> processAudio(Uint8List audioData) async {
+    // CRITICAL: Skip if already processing to prevent queue buildup
     if (!_isReady || !_isEnabled || _isProcessing) return;
 
     try {
       _isProcessing = true;
       _logger?.call('🎤 Agent processing audio (${audioData.length} bytes)...');
 
-      // Run ASR on audio
-      final asrResult = await _asrService.transcribeAudio(audioData);
+      // Run ASR on audio with timeout protection
+      final asrResult = await _asrService.transcribeAudio(audioData).timeout(
+        const Duration(milliseconds: 600), // Max 600ms to prevent blocking
+        onTimeout: () {
+          _logger?.call('⚠️ ASR timeout - skipping this audio chunk');
+          return null;
+        },
+      );
 
       if (asrResult != null && asrResult.text.isNotEmpty) {
         _logger?.call(
@@ -148,15 +156,23 @@ class AgentManager {
   }
 
   /// Process image through agent pipeline (parallel to Gemini)
+  /// OPTIMIZED: Non-blocking, skip if already processing
   Future<void> processImage(Uint8List imageData) async {
+    // CRITICAL: Skip if already processing to prevent queue buildup
     if (!_isReady || !_isEnabled || _isProcessing) return;
 
     try {
       _isProcessing = true;
       _logger?.call('📸 Agent processing image (${imageData.length} bytes)...');
 
-      // Run OCR on image
-      final ocrResult = await _ocrService.extractText(imageData);
+      // Run OCR on image with timeout protection (timeout already set in OCR service)
+      final ocrResult = await _ocrService.extractText(imageData).timeout(
+        const Duration(milliseconds: 700), // Max 700ms total to prevent blocking
+        onTimeout: () {
+          _logger?.call('⚠️ OCR timeout - skipping this image');
+          return null;
+        },
+      );
 
       if (ocrResult != null && ocrResult.text.isNotEmpty) {
         _logger?.call(

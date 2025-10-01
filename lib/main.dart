@@ -936,11 +936,15 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     }
   }
 
+  // Photo counter for agent debouncing
+  int _photoCounter = 0;
+  static const int _agentPhotoProcessEveryNthPhoto = 3; // Process every 3rd photo (reduces agent load by 66%)
+
   /// Handle photo received via RxPhoto (like original repository)
   void _handleFramePhoto(Uint8List jpegBytes) {
     _logEvent('📸 Photo received via RxPhoto (${jpegBytes.length} bytes)');
 
-    // Send photo to Gemini if connected (original repo pattern)
+    // PRIORITY 1: Send photo to Gemini if connected - PROTECTED, NEVER BLOCKED
     if (_gemini != null && _gemini!.isConnected()) {
       _gemini!.sendPhoto(jpegBytes);
       _logEvent('📸 Photo sent to Gemini for analysis');
@@ -959,24 +963,54 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       }
     });
 
-    // AGENT INTEGRATION: Process photo through agent system (parallel to Gemini)
-    if (_agentManager?.isEnabled == true) {
-      _agentManager!.processImage(jpegBytes);
-    }
+    // AGENT PROCESSING: Debounced to reduce load (only every 3rd photo)
+    _photoCounter++;
+    if (_photoCounter >= _agentPhotoProcessEveryNthPhoto) {
+      _photoCounter = 0;
 
-    // INTEGRATED AGENT: Process photo through integrated agentic service
-    if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
-      _integratedAgent!.processImage(jpegBytes, metadata: {
-        'source': 'frame_camera',
-        'timestamp': DateTime.now().toIso8601String(),
-        'size': jpegBytes.length,
-      });
+      // AGENT INTEGRATION: Process photo through agent system (heavily debounced, non-blocking)
+      if (_agentManager?.isEnabled == true) {
+        // Fire-and-forget: completely non-blocking
+        Future.microtask(() async {
+          try {
+            await _agentManager!.processImage(jpegBytes);
+          } catch (e) {
+            // Silently handle agent processing errors
+            if (kDebugMode) {
+              _logEvent('⚠️ Agent photo processing error: $e');
+            }
+          }
+        });
+      }
+
+      // INTEGRATED AGENT: Process photo through integrated agentic service (heavily debounced, non-blocking)
+      if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
+        // Fire-and-forget: completely non-blocking
+        Future.microtask(() async {
+          try {
+            await _integratedAgent!.processImage(jpegBytes, metadata: {
+              'source': 'frame_camera',
+              'timestamp': DateTime.now().toIso8601String(),
+              'size': jpegBytes.length,
+            });
+          } catch (e) {
+            // Silently handle integrated agent errors
+            if (kDebugMode) {
+              _logEvent('⚠️ Integrated agent photo processing error: $e');
+            }
+          }
+        });
+      }
     }
   }
 
+  // Audio packet counter for agent debouncing
+  int _audioPacketCounter = 0;
+  static const int _agentAudioProcessEveryNthPacket = 5; // Process every 5th packet (reduces agent load by 80%)
+
   /// Handle audio received via RxAudio (exactly like original repository)
   void _handleFrameAudio(Uint8List pcm16x8) {
-    // PRIORITY 1: Send to Gemini first (main pipeline)
+    // PRIORITY 1: Send to Gemini first (main pipeline) - PROTECTED, NEVER BLOCKED
     if (_gemini != null && _gemini!.isConnected()) {
       try {
         // Upsample PCM16 from 8kHz to 16kHz for Gemini (same as original)
@@ -1001,44 +1035,51 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       }
     }
 
-    // AGENT INTEGRATION: Process audio through agent system (non-interfering)
-    if (_agentManager?.isEnabled == true) {
-      // Process agent audio asynchronously to avoid blocking Gemini stream
-      Future.microtask(() async {
-        try {
-          // Create independent copy for agent processing
-          final agentAudio = Uint8List.fromList(pcm16x8);
-          final pcm16x16 = AudioUpsampler.upsample8kTo16k(agentAudio);
-          await _agentManager!.processAudio(pcm16x16);
-        } catch (e) {
-          // Silently handle agent processing errors to avoid affecting main pipeline
-          if (kDebugMode) {
-            _logEvent('⚠️ Agent audio processing error: $e');
-          }
-        }
-      });
-    }
+    // AGENT PROCESSING: Debounced to reduce load (only every 5th packet)
+    _audioPacketCounter++;
+    if (_audioPacketCounter >= _agentAudioProcessEveryNthPacket) {
+      _audioPacketCounter = 0;
 
-    // INTEGRATED AGENT: Process audio through integrated agentic service (non-blocking)
-    if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
-      Future.microtask(() async {
-        try {
-          // Create independent copy for integrated agent processing
-          final agentAudio = Uint8List.fromList(pcm16x8);
-          final pcm16x16 = AudioUpsampler.upsample8kTo16k(agentAudio);
-          await _integratedAgent!.processAudio(pcm16x16, metadata: {
-            'source': 'frame_microphone',
-            'timestamp': DateTime.now().toIso8601String(),
-            'originalSize': pcm16x8.length,
-            'upsampledSize': pcm16x16.length,
-          });
-        } catch (e) {
-          // Silently handle integrated agent errors
-          if (kDebugMode) {
-            _logEvent('⚠️ Integrated agent audio processing error: $e');
+      // AGENT INTEGRATION: Process audio through agent system (heavily debounced, non-blocking)
+      if (_agentManager?.isEnabled == true) {
+        // Fire-and-forget: no await, completely non-blocking
+        Future.microtask(() async {
+          try {
+            // Create independent copy for agent processing
+            final agentAudio = Uint8List.fromList(pcm16x8);
+            final pcm16x16 = AudioUpsampler.upsample8kTo16k(agentAudio);
+            await _agentManager!.processAudio(pcm16x16);
+          } catch (e) {
+            // Silently handle agent processing errors to avoid affecting main pipeline
+            if (kDebugMode) {
+              _logEvent('⚠️ Agent audio processing error: $e');
+            }
           }
-        }
-      });
+        });
+      }
+
+      // INTEGRATED AGENT: Process audio through integrated agentic service (heavily debounced, non-blocking)
+      if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
+        // Fire-and-forget: no await, completely non-blocking
+        Future.microtask(() async {
+          try {
+            // Create independent copy for integrated agent processing
+            final agentAudio = Uint8List.fromList(pcm16x8);
+            final pcm16x16 = AudioUpsampler.upsample8kTo16k(agentAudio);
+            await _integratedAgent!.processAudio(pcm16x16, metadata: {
+              'source': 'frame_microphone',
+              'timestamp': DateTime.now().toIso8601String(),
+              'originalSize': pcm16x8.length,
+              'upsampledSize': pcm16x16.length,
+            });
+          } catch (e) {
+            // Silently handle integrated agent errors
+            if (kDebugMode) {
+              _logEvent('⚠️ Integrated agent audio processing error: $e');
+            }
+          }
+        });
+      }
     }
   }
 
