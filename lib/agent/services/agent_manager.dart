@@ -5,6 +5,7 @@ import 'local_llm_service.dart';
 import 'ocr_service.dart';
 import '../models/agent_output.dart';
 import '../../services/vector_db_service.dart';
+import '../utils/media_buffer_manager.dart';
 // import '../../objectbox.g.dart'; // Disabled - using AI Edge RAG instead
 
 /// Agent Manager - Coordinates all agent services and provides unified interface
@@ -251,6 +252,126 @@ class AgentManager {
       }
     } catch (e) {
       _logger?.call('❌ Agent multimodal processing error: $e');
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
+  /// Process audio batch through agent pipeline (NEW: Full coverage batch processing)
+  /// Replaces debounced single-packet processing for complete transcriptions
+  Future<void> processAudioBatch(AudioBatch batch) async {
+    // Skip if already processing or not ready
+    if (!_isReady || !_isEnabled || _isProcessing) return;
+
+    try {
+      _isProcessing = true;
+      _logger?.call(
+        '🎤 Agent processing audio batch: ${batch.packetCount} packets, '
+        '${(batch.totalBytes / 1024).toStringAsFixed(1)}KB, '
+        '${batch.duration.inMilliseconds}ms duration'
+      );
+
+      // Run ASR on the complete audio batch with extended timeout
+      final asrResult = await _asrService.transcribeAudioBatch(batch.combinedData).timeout(
+        const Duration(milliseconds: 2000), // Longer timeout for batch processing
+        onTimeout: () {
+          _logger?.call('⚠️ ASR batch timeout - skipping this batch');
+          return null;
+        },
+      );
+
+      if (asrResult != null && asrResult.text.isNotEmpty) {
+        _logger?.call(
+          '🎤 Agent ASR Batch: "${asrResult.text}" '
+          '(${asrResult.confidence.toStringAsFixed(2)})'
+        );
+
+        // Log the extracted ASR text clearly for event log visibility
+        _logger?.call('📝 ASR Batch Text: "${asrResult.text}"');
+        _logger?.call('🔊 ASR Batch Confidence: ${(asrResult.confidence * 100).toStringAsFixed(1)}%');
+        _logger?.call('⏱️ ASR Batch Processing Time: ${asrResult.processingTime.inMilliseconds}ms');
+        _logger?.call('📊 Batch Coverage: ${batch.packetCount} packets over ${batch.duration.inMilliseconds}ms');
+
+        // Process with LLM if we have text
+        await _processWithLLM(
+          context: 'Audio transcription: ${asrResult.text}',
+          inputType: 'audio_batch',
+          inputData: {
+            'transcription': asrResult.text,
+            'confidence': asrResult.confidence,
+            'audioLength': batch.totalBytes,
+            'packetCount': batch.packetCount,
+            'duration': batch.duration.inMilliseconds,
+            'startTime': batch.startTime.toIso8601String(),
+            'endTime': batch.endTime.toIso8601String(),
+          },
+        );
+      } else {
+        _logger?.call('🔇 No ASR text extracted from audio batch');
+      }
+    } catch (e) {
+      _logger?.call('❌ Agent audio batch processing error: $e');
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
+  /// Process image batch through agent pipeline (NEW: Full coverage batch processing)
+  /// Processes related images together for contextual understanding
+  Future<void> processImageBatch(ImageBatch batch) async {
+    // Skip if already processing or not ready
+    if (!_isReady || !_isEnabled || _isProcessing) return;
+
+    try {
+      _isProcessing = true;
+      _logger?.call(
+        '📸 Agent processing image batch: ${batch.imageCount} images, '
+        '${batch.timeSpan.inMilliseconds}ms timespan'
+      );
+
+      // Run OCR on the image batch with extended timeout
+      final ocrResults = await _ocrService.extractTextFromBatch(
+        batch.images.map((img) => img.data).toList()
+      ).timeout(
+        const Duration(milliseconds: 3000), // Longer timeout for batch processing
+        onTimeout: () {
+          _logger?.call('⚠️ OCR batch timeout - skipping this batch');
+          return null;
+        },
+      );
+
+      if (ocrResults != null && ocrResults.text.isNotEmpty) {
+        _logger?.call(
+          '👁️ Agent OCR Batch: "${ocrResults.text}" '
+          '(${ocrResults.confidence.toStringAsFixed(2)})'
+        );
+
+        // Log the extracted OCR text clearly for event log visibility
+        _logger?.call('📖 OCR Batch Text: "${ocrResults.text}"');
+        _logger?.call('👀 OCR Batch Confidence: ${(ocrResults.confidence * 100).toStringAsFixed(1)}%');
+        _logger?.call('🔍 OCR Text Blocks Found: ${ocrResults.textBlocks.length}');
+        _logger?.call('⏱️ OCR Batch Processing Time: ${ocrResults.processingTime.inMilliseconds}ms');
+        _logger?.call('📊 Batch Coverage: ${batch.imageCount} images over ${batch.timeSpan.inMilliseconds}ms');
+
+        // Process with LLM if we have text
+        await _processWithLLM(
+          context: 'Image OCR text batch: ${ocrResults.text}',
+          inputType: 'image_batch',
+          inputData: {
+            'ocrText': ocrResults.text,
+            'confidence': ocrResults.confidence,
+            'textBlocks': ocrResults.textBlocks.length,
+            'imageCount': batch.imageCount,
+            'timeSpan': batch.timeSpan.inMilliseconds,
+            'startTime': batch.startTime.toIso8601String(),
+            'endTime': batch.endTime.toIso8601String(),
+          },
+        );
+      } else {
+        _logger?.call('👁️ Agent OCR Batch: No text found in images');
+      }
+    } catch (e) {
+      _logger?.call('❌ Agent image batch processing error: $e');
     } finally {
       _isProcessing = false;
     }

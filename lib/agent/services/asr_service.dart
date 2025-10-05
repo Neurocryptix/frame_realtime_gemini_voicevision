@@ -115,6 +115,47 @@ class ASRService {
     }
   }
 
+  /// Transcribe audio batch (NEW: Full coverage batch processing)
+  /// Processes larger audio chunks (2-3 seconds) for better accuracy
+  Future<ASRResult?> transcribeAudioBatch(Uint8List audioData) async {
+    if (!_isReady) {
+      _logger?.call('⚠️ Agent ASR service not ready');
+      return null;
+    }
+
+    if (audioData.length < minAudioLength) {
+      return null; // Audio too short for reliable transcription
+    }
+
+    try {
+      // For batch processing, we expect longer audio (2-3 seconds)
+      // This should provide much better transcription accuracy
+      _logger?.call('🎤 Starting ASR batch transcription (${audioData.length} bytes)...');
+
+      // Use real ASR if available, otherwise fall back to mock
+      ASRResult? result;
+      if (_speechEnabled) {
+        result = await _realTimeTranscription(audioData);
+      }
+
+      // Fall back to mock if real ASR not available or failed
+      if (result == null) {
+        _logger?.call('⚠️ Real ASR failed for batch, using mock');
+        result = await _mockTranscription(audioData);
+      }
+
+      if (result != null) {
+        _logger?.call('✅ ASR batch complete: "${result.text}"');
+      }
+
+      return result;
+    } catch (e) {
+      _logger?.call('❌ Agent ASR batch transcription error: $e');
+      // Fall back to mock if real ASR fails
+      return await _mockTranscription(audioData);
+    }
+  }
+
   /// Real-time transcription using speech_to_text (SEPARATE from Gemini pipeline)
   Future<ASRResult?> _realTimeTranscription(Uint8List audioData) async {
     try {

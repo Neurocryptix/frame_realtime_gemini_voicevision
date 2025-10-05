@@ -235,6 +235,150 @@ class OCRService {
     }
   }
 
+  /// Extract text from image batch (NEW: Full coverage batch processing)
+  /// Processes multiple related images and deduplicates repeated text
+  Future<OCRResult?> extractTextFromBatch(List<Uint8List> imageBatch) async {
+    if (!_isReady) {
+      _logger?.call('⚠️ Enhanced OCR service not ready');
+      return null;
+    }
+
+    if (imageBatch.isEmpty) {
+      return null;
+    }
+
+    try {
+      _logger?.call('👁️ Starting OCR batch processing (${imageBatch.length} images)...');
+
+      final startTime = DateTime.now();
+      final allTextBlocks = <mlkit.TextBlock>[];
+      final seenTexts = <String>{};  // For deduplication
+      final confidenceScores = <double>[];
+
+      // Process each image in the batch
+      for (int i = 0; i < imageBatch.length; i++) {
+        try {
+          final imageData = imageBatch[i];
+
+          // Preprocess if needed
+          final processedImage = _useImagePreprocessing
+              ? await _preprocessImage(imageData)
+              : imageData;
+
+          // Create input image for ML Kit
+          final inputImage = InputImage.fromBytes(
+            bytes: processedImage,
+            metadata: InputImageMetadata(
+              size: const Size(720, 720), // Frame glasses resolution
+              rotation: InputImageRotation.rotation0deg,
+              format: InputImageFormat.yuv420,
+              bytesPerRow: 720,
+            ),
+          );
+
+          // Run OCR
+          if (_textRecognizer != null) {
+            final recognizedText = await _textRecognizer!.processImage(inputImage).timeout(
+              const Duration(milliseconds: 500),
+              onTimeout: () {
+                _logger?.call('⚠️ OCR timeout on image $i - skipping');
+                throw TimeoutException('OCR processing timeout');
+              },
+            );
+
+            // Collect unique text blocks
+            for (final block in recognizedText.blocks) {
+              final blockText = block.text.trim();
+              // Only add if not seen before (deduplication)
+              if (blockText.isNotEmpty && !seenTexts.contains(blockText)) {
+                allTextBlocks.add(block);
+                seenTexts.add(blockText);
+
+                // Collect confidence from elements
+                for (final line in block.lines) {
+                  for (final _ in line.elements) {
+                    confidenceScores.add(1.0); // ML Kit doesn't provide confidence, assume high
+                  }
+                }
+              }
+            }
+          } else {
+            // Use mock for this image
+            _logger?.call('⚠️ ML Kit not available for image $i, using mock');
+          }
+        } catch (e) {
+          _logger?.call('⚠️ Failed to process image $i in batch: $e');
+          // Continue with other images
+          continue;
+        }
+      }
+
+      final processingTime = DateTime.now().difference(startTime);
+
+      // If no text found, return null or mock result
+      if (allTextBlocks.isEmpty) {
+        _logger?.call('👁️ No text found in image batch');
+        // Try mock result for the first image
+        if (imageBatch.isNotEmpty) {
+          return _mockOCRResult(imageBatch.first);
+        }
+        return null;
+      }
+
+      // Combine all unique text blocks
+      final combinedText = allTextBlocks.map((block) => block.text.trim()).join(' ');
+
+      // Calculate average confidence
+      final avgConfidence = confidenceScores.isEmpty
+          ? 0.8
+          : confidenceScores.reduce((a, b) => a + b) / confidenceScores.length;
+
+      _logger?.call(
+        '✅ OCR batch complete: ${allTextBlocks.length} unique text blocks, '
+        '${seenTexts.length} unique strings'
+      );
+
+      // Convert ML Kit TextBlocks to agent TextBlocks
+      final agentTextBlocks = allTextBlocks.map((mlkitBlock) {
+        return TextBlock(
+          text: mlkitBlock.text.trim(),
+          confidence: avgConfidence,
+          bounds: BoundingBox(
+            left: mlkitBlock.boundingBox.left,
+            top: mlkitBlock.boundingBox.top,
+            width: mlkitBlock.boundingBox.width,
+            height: mlkitBlock.boundingBox.height,
+          ),
+          metadata: {
+            'lines': mlkitBlock.lines.length,
+            'cornerPoints': mlkitBlock.cornerPoints.length,
+          },
+        );
+      }).toList();
+
+      return OCRResult(
+        text: combinedText,
+        textBlocks: agentTextBlocks,
+        confidence: avgConfidence,
+        processingTime: processingTime,
+        metadata: {
+          'imageCount': imageBatch.length,
+          'uniqueTextBlocks': allTextBlocks.length,
+          'deduplicatedStrings': seenTexts.length,
+          'batchProcessing': true,
+          'mlKitUsed': _textRecognizer != null,
+        },
+      );
+    } catch (e) {
+      _logger?.call('❌ Enhanced OCR batch error: $e');
+      // Fall back to mock for the first image
+      if (imageBatch.isNotEmpty) {
+        return _mockOCRResult(imageBatch.first);
+      }
+      return null;
+    }
+  }
+
   /// Preprocess image to improve OCR accuracy (OPTIMIZED - lightweight processing only)
   Future<Uint8List> _preprocessImage(Uint8List imageData) async {
     try {

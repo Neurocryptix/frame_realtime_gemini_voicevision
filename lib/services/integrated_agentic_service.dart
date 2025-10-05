@@ -5,6 +5,7 @@ import 'ai_edge_model_manager.dart';
 import 'ai_edge_rag_service.dart';
 import '../agent/services/ai_edge_agent_service.dart';
 import '../agent/interfaces/ai_edge_interfaces.dart';
+import '../agent/utils/media_buffer_manager.dart';
 
 /// Integrated Agentic Service
 /// Combines model management, AI Edge RAG, and agentic functionality
@@ -278,6 +279,86 @@ class IntegratedAgenticService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _logger?.call('❌ Audio processing failed: $e');
+    }
+  }
+
+  /// Process audio batch (NEW: Full coverage batch processing)
+  Future<void> processAudioBatch(AudioBatch batch) async {
+    if (!_isReady) return;
+
+    try {
+      _logger?.call(
+        '🎤 Integrated Agent processing audio batch: ${batch.packetCount} packets, '
+        '${(batch.totalBytes / 1024).toStringAsFixed(1)}KB, '
+        '${batch.duration.inMilliseconds}ms duration'
+      );
+
+      // For now, use mock text with batch metadata
+      final mockText = 'Audio batch from Frame glasses - '
+          '${batch.packetCount} packets over ${batch.duration.inMilliseconds}ms';
+
+      // Store in AI Edge RAG with complete batch metadata
+      await _agentService.storeASROutput(
+        text: mockText,
+        confidence: 0.7,
+        timestamp: batch.endTime,
+        additionalMetadata: {
+          'audioSize': batch.totalBytes,
+          'processingType': 'frame_audio_batch',
+          'packetCount': batch.packetCount,
+          'duration': batch.duration.inMilliseconds,
+          'startTime': batch.startTime.toIso8601String(),
+          'endTime': batch.endTime.toIso8601String(),
+          'batchProcessing': true,
+        },
+      );
+
+      _logger?.call('✅ Audio batch stored in AI Edge RAG');
+
+      _lastActivity = DateTime.now();
+      _totalQueries++;
+      notifyListeners();
+    } catch (e) {
+      _logger?.call('❌ Audio batch processing failed: $e');
+    }
+  }
+
+  /// Process image batch (NEW: Full coverage batch processing)
+  Future<void> processImageBatch(ImageBatch batch) async {
+    if (!_isReady) return;
+
+    try {
+      _logger?.call(
+        '📸 Integrated Agent processing image batch: ${batch.imageCount} images, '
+        '${batch.timeSpan.inMilliseconds}ms timespan'
+      );
+
+      // For now, use mock text with batch metadata
+      final mockText = 'Image batch from Frame glasses - '
+          '${batch.imageCount} images over ${batch.timeSpan.inMilliseconds}ms';
+
+      // Store in AI Edge RAG with complete batch metadata
+      await _agentService.storeOCROutput(
+        text: mockText,
+        confidence: 0.8,
+        timestamp: batch.endTime,
+        additionalMetadata: {
+          'imageCount': batch.imageCount,
+          'processingType': 'frame_image_batch',
+          'timeSpan': batch.timeSpan.inMilliseconds,
+          'startTime': batch.startTime.toIso8601String(),
+          'endTime': batch.endTime.toIso8601String(),
+          'batchProcessing': true,
+        },
+      );
+
+      _logger?.call('✅ Image batch stored in AI Edge RAG');
+
+      _lastActivity = DateTime.now();
+      _totalQueries++;
+      notifyListeners();
+    } catch (e) {
+      _logger?.call('❌ Image batch processing failed: $e');
     }
   }
 

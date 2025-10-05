@@ -33,16 +33,16 @@ import 'package:frame_realtime_gemini_voicevision/widgets/resource_monitor.dart'
 // Performance utilities
 import 'package:frame_realtime_gemini_voicevision/utils/debouncer.dart';
 
+// Agent media buffering
+import 'package:frame_realtime_gemini_voicevision/agent/utils/media_buffer_manager.dart';
+
 // AI Edge setup integration
 import 'package:frame_realtime_gemini_voicevision/services/ai_edge_auto_init_service.dart';
 import 'package:frame_realtime_gemini_voicevision/screens/model_download_screen.dart';
 import 'package:frame_realtime_gemini_voicevision/services/integrated_agentic_service.dart';
 
-// Agent system imports
-import 'package:frame_realtime_gemini_voicevision/agent/core/agent_core.dart';
-// import 'package:frame_realtime_gemini_voicevision/agent/services/agent_vector_service.dart'; // Legacy - using AI Edge RAG
-import 'package:frame_realtime_gemini_voicevision/agent/services/agent_manager.dart';
-// import 'package:frame_realtime_gemini_voicevision/agent/ui/agent_demo_widget.dart'; // Unused - using integrated interface
+// Agent system - using IntegratedAgenticService only
+// Legacy agent_core and agent_manager removed - all functionality in IntegratedAgenticService
 
 // Global ObjectBox store instance
 // late Store store; // Disabled - using AI Edge RAG instead
@@ -246,21 +246,18 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   String _lastDatabaseQuery = 'No queries yet';
   List<Map<String, dynamic>> _lastDatabaseResults = [];
   DateTime? _lastDatabaseTime;
-  String _lastLLMInput = 'No LLM input yet';
-  String _lastLLMOutput = 'No LLM output yet';
-  Duration _lastLLMProcessingTime = Duration.zero;
+  final String _lastLLMInput = 'No LLM input yet';
+  final String _lastLLMOutput = 'No LLM output yet';
+  final Duration _lastLLMProcessingTime = Duration.zero;
   DateTime? _lastLLMTime;
   int _totalASRProcessed = 0;
   int _totalDatabaseQueries = 0;
-  int _totalLLMRequests = 0;
+  final int _totalLLMRequests = 0;
 
   // Simple Gemini realtime connection (like original)
   gemini_realtime.GeminiRealtime? _gemini;
 
-  // Agent system
-  AgentCore? _agentCore;
-  // AgentVectorService? _agentVectorService; // Legacy - using AI Edge RAG
-  AgentManager? _agentManager;
+  // Agent system - using IntegratedAgenticService only
   IntegratedAgenticService? _integratedAgent;
 
   StreamSubscription<Uint8List>? _audioSubscription;
@@ -285,6 +282,10 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   final _agentUpdateThrottler = Throttler(duration: const Duration(milliseconds: 100));
   final _photoUpdateThrottler = Throttler(duration: const Duration(milliseconds: 200));
 
+  // Agent media buffering (replaces debouncing for full coverage)
+  late AudioBufferManager _audioBufferManager;
+  late ImageBufferManager _imageBufferManager;
+
   @override
   void initState() {
     super.initState();
@@ -296,10 +297,25 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     );
     _rxAudio = RxAudio(streaming: true);
 
+    // Initialize media buffer managers for agent processing (full coverage)
+    _audioBufferManager = AudioBufferManager(
+      logger: _logEvent,
+      minPacketsPerBatch: 40, // ~2 seconds at 20 packets/sec
+      maxBufferDuration: const Duration(milliseconds: 3000),
+      onBatchReady: _handleAudioBatch,
+    );
+    _imageBufferManager = ImageBufferManager(
+      logger: _logEvent,
+      minImagesPerBatch: 5,
+      maxBufferDuration: const Duration(milliseconds: 3000),
+      onBatchReady: _handleImageBatch,
+    );
+
     _initializeServices();
     _loadGeminiApiKey();
     _requestPermissions();
     _logEvent('🚀 App initialized with Frame SDK integration');
+    _logEvent('📦 Agent buffer managers initialized for full coverage');
   }
 
   @override
@@ -307,6 +323,10 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     // Dispose throttlers
     _agentUpdateThrottler.dispose();
     _photoUpdateThrottler.dispose();
+
+    // Dispose buffer managers
+    _audioBufferManager.dispose();
+    _imageBufferManager.dispose();
 
     _scrollController.dispose();
     _queryController.dispose();
@@ -329,9 +349,6 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       disconnectFrame();
     }
     _vectorDb?.dispose();
-    _agentCore?.dispose();
-    // _agentVectorService?.dispose(); // Legacy - using AI Edge RAG
-    _agentManager?.dispose();
     _integratedAgent?.dispose();
     super.dispose();
   }
@@ -342,104 +359,17 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       // Note: Uncomment if flutter_blue_plus is available
       // FlutterBluePlus.setLogLevel(LogLevel.info);
 
-      // Initialize AI Edge RAG service instead of legacy VectorDbService
-      try {
-        _logEvent('🚀 Initializing AI Edge RAG system...');
-        final aiEdgeService = AIEdgeRagServiceImpl(logger: _logEvent);
-        final initSuccess = await aiEdgeService.initialize();
+      // Initialize legacy VectorDbService stub for backward compatibility
+      // (actual vector operations handled by IntegratedAgenticService)
+      _vectorDb = VectorDbService(_logEvent);
+      await _vectorDb!.initialize(null);
 
-        if (initSuccess) {
-          _logEvent('✅ AI Edge RAG initialized successfully');
-
-          // Check document count from AI Edge RAG
-          final docCount = await aiEdgeService.getDocumentCount();
-          _logEvent('📊 AI Edge RAG has $docCount documents');
-
-          // Add sample data if needed
-          if (docCount == 0) {
-            _logEvent('📝 Adding sample data to AI Edge RAG...');
-            await aiEdgeService.addSampleData();
-            final newDocCount = await aiEdgeService.getDocumentCount();
-            _logEvent('✅ Sample data added - $newDocCount documents in AI Edge RAG');
-
-            // Update legacy VectorDbService count for consistency
-            VectorDbService.updateDocumentCount(newDocCount);
-          } else {
-            // Sync existing count with legacy service
-            VectorDbService.updateDocumentCount(docCount);
-          }
-
-          // Keep legacy VectorDbService for backward compatibility but mark it as using AI Edge backend
-          _vectorDb = VectorDbService(_logEvent);
-          await _vectorDb!.initialize(null); // Initialize stub
-        } else {
-          _logEvent('⚠️ AI Edge RAG initialization failed, using legacy stub');
-          _vectorDb = VectorDbService(_logEvent);
-          await _vectorDb!.initialize(null);
-        }
-      } catch (e) {
-        _logEvent('❌ AI Edge RAG initialization error: $e');
-        _logEvent('📦 Falling back to legacy VectorDbService stub');
-        _vectorDb = VectorDbService(_logEvent);
-        await _vectorDb!.initialize(null);
-      }
-
-      // Initialize agent system (non-blocking)
-      await _initializeAgentSystem();
-
-      // Initialize agent manager (unified agent services)
-      await _initializeAgentManager();
-
-      // Initialize integrated agentic service
+      // Initialize integrated agentic service (handles all agent functionality)
       await _initializeIntegratedAgent();
 
       _logEvent('🔧 Essential services initialized');
     } catch (e) {
       _logEvent('❌ Service initialization error: $e');
-    }
-  }
-
-  /// Initialize agent system (graceful degradation if fails)
-  Future<void> _initializeAgentSystem() async {
-    try {
-      _logEvent('🔧 Starting agent system initialization...');
-
-      if (_vectorDb == null) {
-        _logEvent('⚠️ Agent system requires vector database - skipping initialization');
-        return;
-      }
-
-      // Check vector database status
-      final docCount = _vectorDb!.getDocumentCount();
-      _logEvent('📊 Vector database status: $docCount documents available');
-
-      // Legacy agent vector service replaced by AI Edge RAG
-      _logEvent('📝 Note: Using AI Edge RAG instead of legacy vector service');
-
-      // Initialize agent core (now without vector service dependency)
-      _logEvent('🤖 Initializing AgentCore...');
-      _agentCore = AgentCore(
-        logger: _logEvent,
-      );
-
-      _logEvent('⏳ Running AgentCore initialization...');
-      final agentReady = await _agentCore!.initialize();
-
-      if (agentReady) {
-        _logEvent('✅ Agent system ready (graceful mode)');
-        _logEvent('🔧 AgentCore initialized successfully');
-      } else {
-        _logEvent('⚠️ Agent system initialized with limited capabilities');
-        _logEvent('🔧 AgentCore initialization completed with warnings');
-      }
-    } catch (e) {
-      _logEvent('❌ Agent initialization failed (continuing without agent): $e');
-      _logEvent('🔍 Error details: ${e.toString()}');
-
-      // Continue without agent - graceful degradation
-      _agentCore = null;
-      // _agentVectorService = null; // Legacy - using AI Edge RAG
-      _logEvent('🛡️ Graceful degradation: app continues without agent system');
     }
   }
 
@@ -482,99 +412,6 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       _logEvent('🔍 Error details: ${e.toString()}');
       _logEvent('🛡️ App will continue without integrated agent features');
       _integratedAgent = null;
-    }
-  }
-
-  /// Initialize agent manager with unified agent services
-  Future<void> _initializeAgentManager() async {
-    try {
-      _logEvent('🤖 Initializing Agent Manager...');
-      _logEvent('🔧 Creating AgentManager instance...');
-
-      _agentManager = AgentManager(logger: _logEvent, vectorDbService: _vectorDb);
-
-      _logEvent('⏳ Running AgentManager initialization...');
-      _logEvent('🧩 Initializing ASR, LLM, and OCR services...');
-
-      final agentReady = await _agentManager!.initialize();
-
-      if (agentReady) {
-        _logEvent('✅ Agent Manager ready - Real services active');
-
-        // Get detailed status
-        final status = _agentManager!.getStatus();
-        _logEvent('📊 Service readiness: ASR=${status['services']['asr']}, LLM=${status['services']['llm']}, OCR=${status['services']['ocr']}');
-        _logEvent('🛠️ Available tools: ${status['availableTools']}');
-
-        // Listen to agent outputs for UI updates (read-only monitoring)
-        _agentManager!.agentOutput.listen((result) {
-          _logEvent('🤖 Agent result: ${result.llmResponse}');
-          if (result.toolCalls.isNotEmpty) {
-            _logEvent(
-                '🔧 Tools executed: ${result.toolCalls.map((t) => t.name).join(", ")}');
-          }
-          
-          // Update debugging UI state (throttled to reduce rebuild frequency)
-          _agentUpdateThrottler(() {
-            setState(() {
-              // LLM debugging info
-              _lastLLMOutput = result.llmResponse;
-              _lastLLMProcessingTime = result.processingTime;
-              _lastLLMTime = result.timestamp;
-              _totalLLMRequests++;
-
-              // Extract ASR info if available
-              if (result.inputData.containsKey('transcription')) {
-                _lastASRText = result.inputData['transcription']?.toString() ?? 'Empty';
-                _lastASRConfidence = (result.inputData['confidence'] as num?)?.toDouble() ?? 0.0;
-                _lastASRTime = result.timestamp;
-                _totalASRProcessed++;
-                _lastLLMInput = 'Speech: "$_lastASRText"';
-              }
-
-              // Extract OCR info if available
-              if (result.inputData.containsKey('ocrText')) {
-                _lastLLMInput = 'Image Text: "${result.inputData['ocrText']}';
-              }
-
-              // Extract database operations from tool results
-              for (final toolResult in result.toolResults.values) {
-                if (toolResult is Map<String, dynamic>) {
-                  if (toolResult['action'] == 'retrieved') {
-                    _lastDatabaseQuery = toolResult['query']?.toString() ?? 'Unknown query';
-                    _lastDatabaseResults = List<Map<String, dynamic>>.from(
-                        toolResult['results'] as List? ?? []);
-                    _lastDatabaseTime = result.timestamp;
-                    _totalDatabaseQueries++;
-                  } else if (toolResult['action'] == 'stored') {
-                    _lastDatabaseQuery = 'STORE: ${toolResult['content']}';
-                    _lastDatabaseResults = [];
-                    _lastDatabaseTime = result.timestamp;
-                    _totalDatabaseQueries++;
-                  }
-                }
-              }
-            });
-          });
-        });
-      } else {
-        _logEvent('⚠️ Agent Manager initialization issues (continuing with fallbacks)');
-        _logEvent('🔍 Some services may not be available - check individual service status');
-
-        // Get failed services info
-        final status = _agentManager!.getStatus();
-        final services = status['services'] as Map<String, dynamic>? ?? {};
-        services.forEach((service, ready) {
-          if (ready != true) {
-            _logEvent('❌ Service not ready: $service');
-          }
-        });
-      }
-    } catch (e) {
-      _logEvent('❌ Agent Manager failed (continuing without): $e');
-      _logEvent('🔍 Error details: ${e.toString()}');
-      _logEvent('🛡️ App will continue without Agent Manager features');
-      _agentManager = null;
     }
   }
 
@@ -936,10 +773,6 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     }
   }
 
-  // Photo counter for agent debouncing
-  int _photoCounter = 0;
-  static const int _agentPhotoProcessEveryNthPhoto = 3; // Process every 3rd photo (reduces agent load by 66%)
-
   /// Handle photo received via RxPhoto (like original repository)
   void _handleFramePhoto(Uint8List jpegBytes) {
     _logEvent('📸 Photo received via RxPhoto (${jpegBytes.length} bytes)');
@@ -963,50 +796,29 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       }
     });
 
-    // AGENT PROCESSING: Debounced to reduce load (only every 3rd photo)
-    _photoCounter++;
-    if (_photoCounter >= _agentPhotoProcessEveryNthPhoto) {
-      _photoCounter = 0;
-
-      // AGENT INTEGRATION: Process photo through agent system (heavily debounced, non-blocking)
-      if (_agentManager?.isEnabled == true) {
-        // Fire-and-forget: completely non-blocking
-        Future.microtask(() async {
-          try {
-            await _agentManager!.processImage(jpegBytes);
-          } catch (e) {
-            // Silently handle agent processing errors
-            if (kDebugMode) {
-              _logEvent('⚠️ Agent photo processing error: $e');
-            }
-          }
-        });
-      }
-
-      // INTEGRATED AGENT: Process photo through integrated agentic service (heavily debounced, non-blocking)
-      if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
-        // Fire-and-forget: completely non-blocking
-        Future.microtask(() async {
-          try {
-            await _integratedAgent!.processImage(jpegBytes, metadata: {
-              'source': 'frame_camera',
-              'timestamp': DateTime.now().toIso8601String(),
-              'size': jpegBytes.length,
-            });
-          } catch (e) {
-            // Silently handle integrated agent errors
-            if (kDebugMode) {
-              _logEvent('⚠️ Integrated agent photo processing error: $e');
-            }
-          }
-        });
-      }
+    // AGENT PROCESSING: Buffer ALL images for batch processing (100% coverage)
+    if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
+      _imageBufferManager.addImage(jpegBytes);
     }
   }
 
-  // Audio packet counter for agent debouncing
-  int _audioPacketCounter = 0;
-  static const int _agentAudioProcessEveryNthPacket = 5; // Process every 5th packet (reduces agent load by 80%)
+  /// Handle image batch ready for agent processing
+  void _handleImageBatch(ImageBatch batch) {
+    // Fire-and-forget: completely non-blocking
+    Future.microtask(() async {
+      try {
+        // Process batch through integrated agent
+        if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
+          await _integratedAgent!.processImageBatch(batch);
+        }
+      } catch (e) {
+        // Silently handle agent processing errors
+        if (kDebugMode) {
+          _logEvent('⚠️ Agent batch processing error: $e');
+        }
+      }
+    });
+  }
 
   /// Handle audio received via RxAudio (exactly like original repository)
   void _handleFrameAudio(Uint8List pcm16x8) {
@@ -1035,52 +847,30 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       }
     }
 
-    // AGENT PROCESSING: Debounced to reduce load (only every 5th packet)
-    _audioPacketCounter++;
-    if (_audioPacketCounter >= _agentAudioProcessEveryNthPacket) {
-      _audioPacketCounter = 0;
-
-      // AGENT INTEGRATION: Process audio through agent system (heavily debounced, non-blocking)
-      if (_agentManager?.isEnabled == true) {
-        // Fire-and-forget: no await, completely non-blocking
-        Future.microtask(() async {
-          try {
-            // Create independent copy for agent processing
-            final agentAudio = Uint8List.fromList(pcm16x8);
-            final pcm16x16 = AudioUpsampler.upsample8kTo16k(agentAudio);
-            await _agentManager!.processAudio(pcm16x16);
-          } catch (e) {
-            // Silently handle agent processing errors to avoid affecting main pipeline
-            if (kDebugMode) {
-              _logEvent('⚠️ Agent audio processing error: $e');
-            }
-          }
-        });
-      }
-
-      // INTEGRATED AGENT: Process audio through integrated agentic service (heavily debounced, non-blocking)
-      if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
-        // Fire-and-forget: no await, completely non-blocking
-        Future.microtask(() async {
-          try {
-            // Create independent copy for integrated agent processing
-            final agentAudio = Uint8List.fromList(pcm16x8);
-            final pcm16x16 = AudioUpsampler.upsample8kTo16k(agentAudio);
-            await _integratedAgent!.processAudio(pcm16x16, metadata: {
-              'source': 'frame_microphone',
-              'timestamp': DateTime.now().toIso8601String(),
-              'originalSize': pcm16x8.length,
-              'upsampledSize': pcm16x16.length,
-            });
-          } catch (e) {
-            // Silently handle integrated agent errors
-            if (kDebugMode) {
-              _logEvent('⚠️ Integrated agent audio processing error: $e');
-            }
-          }
-        });
-      }
+    // AGENT PROCESSING: Buffer ALL audio packets for batch processing (100% coverage)
+    // Upsample audio before buffering (agent expects 16kHz)
+    if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
+      final pcm16x16 = AudioUpsampler.upsample8kTo16k(pcm16x8);
+      _audioBufferManager.addPacket(pcm16x16);
     }
+  }
+
+  /// Handle audio batch ready for agent processing
+  void _handleAudioBatch(AudioBatch batch) {
+    // Fire-and-forget: completely non-blocking
+    Future.microtask(() async {
+      try {
+        // Process batch through integrated agent
+        if (_integratedAgent?.isReady == true && _integratedAgent?.agentEnabled == true) {
+          await _integratedAgent!.processAudioBatch(batch);
+        }
+      } catch (e) {
+        // Silently handle agent processing errors
+        if (kDebugMode) {
+          _logEvent('⚠️ Agent batch processing error: $e');
+        }
+      }
+    });
   }
 
   /// Manually capture a single photo for testing
@@ -1330,14 +1120,13 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   }
 
   Widget _buildAgentStatusSection() {
-    // Use integrated agent status if available, otherwise fall back to agent manager
+    // Use integrated agent status only
     final integratedStatus = _integratedAgent?.getStatus();
-    final agentStatus = _agentManager?.getStatus() ?? {};
 
-    final isAgentReady = integratedStatus?['isReady'] as bool? ?? (agentStatus['isReady'] as bool? ?? false);
-    final isAgentEnabled = integratedStatus?['agentEnabled'] as bool? ?? (agentStatus['isEnabled'] as bool? ?? false);
-    final isAgentProcessing = integratedStatus?['isProcessing'] as bool? ?? (agentStatus['isProcessing'] as bool? ?? false);
-    final services = integratedStatus?['services'] as Map<String, dynamic>? ?? (agentStatus['services'] as Map<String, dynamic>? ?? {});
+    final isAgentReady = integratedStatus?['isReady'] as bool? ?? false;
+    final isAgentEnabled = integratedStatus?['agentEnabled'] as bool? ?? false;
+    final isAgentProcessing = integratedStatus?['isProcessing'] as bool? ?? false;
+    final services = integratedStatus?['services'] as Map<String, dynamic>? ?? {};
 
     final totalQueries = integratedStatus?['totalQueries'] as int? ?? 0;
     final totalDocuments = integratedStatus?['totalDocuments'] as int? ?? 0;
@@ -1519,11 +1308,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                   child: ElevatedButton.icon(
                     onPressed: isAgentReady
                         ? () {
-                            if (integratedStatus != null) {
-                              _integratedAgent?.setAgentEnabled(!isAgentEnabled);
-                            } else {
-                              _agentManager?.setEnabled(!isAgentEnabled);
-                            }
+                            _integratedAgent?.setAgentEnabled(!isAgentEnabled);
                             setState(() {}); // Refresh UI
                           }
                         : null,
@@ -1547,9 +1332,6 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
                               'timestamp': DateTime.now().toIso8601String(),
                             });
                             _logEvent('🤖 Manual integrated agent image processing triggered');
-                          } else {
-                            _agentManager?.processImage(_lastPhoto!);
-                            _logEvent('🤖 Manual agent image processing triggered');
                           }
                         }
                       : null,
@@ -1766,24 +1548,15 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
       String mockQuery = 'what can you tell me about smart glasses?';
       double mockConfidence = 0.85;
 
-      // Try to get query from agent ASR if available
-      if (_agentManager != null && _agentManager!.isReady) {
-        try {
-          // Use the agent's ASR service to generate a more realistic query
-          await _agentManager!.processAudio(Uint8List(1600)); // Minimal audio data for demo
-          // For now, keep using fallback queries until real audio input is implemented
-          final queries = [
-            'what are Frame glasses?',
-            'how do Frame glasses work?',
-            'tell me about smart glasses features',
-            'what can I do with Frame glasses?',
-          ];
-          mockQuery = queries[DateTime.now().millisecond % queries.length];
-          _logEvent('🎤 Using varied query: "$mockQuery"');
-        } catch (e) {
-          _logEvent('⚠️ Agent ASR unavailable, using fallback query');
-        }
-      }
+      // Use varied queries for demo
+      final queries = [
+        'what are Frame glasses?',
+        'how do Frame glasses work?',
+        'tell me about smart glasses features',
+        'what can I do with Frame glasses?',
+      ];
+      mockQuery = queries[DateTime.now().millisecond % queries.length];
+      _logEvent('🎤 Using varied query: "$mockQuery"');
       
       // Update debug UI with simulated ASR result
       setState(() {
@@ -2559,7 +2332,9 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   }
 
   Widget _buildLLMDebuggingSection() {
-    final modelType = _agentManager?.getStatus()['services']['llm'] == true ? 'Active' : 'Inactive';
+    final integratedStatus = _integratedAgent?.getStatus();
+    final services = integratedStatus?['services'] as Map<String, dynamic>? ?? {};
+    final modelType = services['agent'] == true ? 'Active' : 'Inactive';
     
     return Card(
       child: Padding(
